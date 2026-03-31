@@ -1,0 +1,154 @@
+<!-- 
+  MOBILE RESPONSIVE PATCH for Türkiye Seçim Simülasyonu
+  ─────────────────────────────────────────────────────
+  Drop this <script> tag at the END of <body>, after all existing scripts.
+  It injects mobile CSS and patches touch behavior.
+-->
+<script>
+(function(){
+  // 1. Fix viewport meta for notch devices
+  const vp = document.querySelector('meta[name="viewport"]');
+  if(vp) vp.content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+
+  // 2. Inject mobile CSS
+  const style = document.createElement('style');
+  style.id = 'mobile-responsive';
+  style.textContent = `
+/* ═══ BASE TOUCH FIXES ═══ */
+html,body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.shell{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.map-panel path{-webkit-tap-highlight-color:transparent}
+
+/* ═══ TABLET ≤840px ═══ */
+@media(max-width:840px){
+  html,body{height:auto!important;overflow:auto!important;overflow-x:hidden!important}
+  .shell{
+    grid-template-areas:"hdr" "map" "ctrl" "res"!important;
+    grid-template-rows:auto minmax(36vh,50vh) auto auto!important;
+    grid-template-columns:1fr!important;
+    height:auto!important;min-height:100dvh;gap:0!important;overflow:visible!important
+  }
+  .hdr{flex-wrap:wrap;gap:6px;padding:8px 12px;height:auto!important;min-height:46px}
+  .hdr::after{display:none}
+  .logo{font-size:16px}
+  .mtabs{order:10;width:100%;justify-content:center;margin:4px 0 0 0!important}
+  .mtab{padding:6px 14px;font-size:11px}
+  .svbadge{display:none}
+  .srchw{order:5;flex:1;min-width:100px}
+  .srch{width:100%!important;font-size:13px;padding:8px 10px 8px 28px}
+  .srch:focus{width:100%!important;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+  #btnClearSearch{order:6}
+  .abtn{font-size:10px;padding:6px 10px;min-height:32px}
+
+  .mapzone{margin:4px!important;border-radius:12px!important;border:1px solid var(--card-border)!important}
+  .mbadge{font-size:8px;padding:4px 8px;top:6px;right:6px}
+  .maps-row{padding:2px}
+  .map-panel-label{font-size:8px;padding:2px 6px}
+  .map-panel path{stroke-width:.9}
+  .maps-row[data-count="2"]{grid-template:1fr 1fr/1fr}
+  .maps-row[data-count="3"]{grid-template:1fr 1fr/1fr 1fr}
+
+  .ctrlzone{margin:4px!important;border-radius:12px!important;border:1px solid var(--card-border)!important}
+  .ctrl-header{flex-wrap:wrap;gap:6px;padding:8px 12px}
+  #inspectorActive{flex-wrap:wrap;gap:6px}
+  .pinsp-data{gap:6px}
+  .pinsp-chip{font-size:11px}
+  .ctrl-body{flex-direction:column!important;padding:8px!important;gap:8px!important;overflow:visible!important}
+  .party-grid{
+    grid-template-columns:repeat(2,1fr)!important;
+    grid-template-rows:auto!important;
+    gap:4px 6px!important
+  }
+  .pcell{padding:6px 8px;gap:5px}
+  .pname{font-size:12px;min-width:28px}
+  .pinp{font-size:14px;padding:6px 2px;min-height:36px}
+  .tgl{width:28px;height:16px}
+  .tgl::after{width:12px;height:12px}
+  .tgl.on::after{transform:translateX(12px)}
+  .ctrl-side{width:100%!important;flex-direction:row!important;gap:8px}
+  .runbtn{flex:1;padding:14px 16px;font-size:14px}
+
+  .resultzone{margin:4px!important;border-radius:12px!important;min-height:auto;max-height:none}
+  .res-body{overflow:visible!important}
+  .res-inner{overflow:visible!important}
+  .res-rows{overflow:visible!important}
+  .rrow{padding:6px 14px;flex-shrink:0;min-height:36px}
+  .rseats{font-size:18px}
+
+  #tooltip{display:none!important}
+
+  .moverlay{padding:8px;align-items:flex-start;padding-top:6vh}
+  .mcard{
+    max-width:100%!important;max-height:85vh;
+    overflow-y:auto;border-radius:12px!important;
+    -webkit-overflow-scrolling:touch
+  }
+  #presidential-inputs,#second-round-inputs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .ptbl{font-size:10px}
+  .ptbl th,.ptbl td{padding:4px 3px}
+  .ptbl input[type="number"]{width:34px;font-size:10px;padding:4px 1px}
+  .ptbl input[type="text"]{width:60px;font-size:11px}
+
+  #toastHost{bottom:8px;right:8px;left:8px}
+  .toast{text-align:center}
+}
+
+/* ═══ PHONE ≤480px ═══ */
+@media(max-width:480px){
+  .shell{grid-template-rows:auto minmax(28vh,38vh) auto auto!important}
+  .hdr{padding:6px 10px;gap:4px}
+  .hdr>div[style*="flex:1"]{display:none}
+  .hdr>div[style*="gap:5px"]{flex-wrap:wrap;gap:3px}
+  .mtab{padding:5px 10px;font-size:10px}
+  .logo{font-size:15px}
+  .ctrl-header{padding:6px 10px}
+  .ctrl-header>div:last-child{width:100%;display:flex}
+  .ctrl-header>div:last-child button{flex:1;font-size:9px}
+  .pinsp-name{font-size:13px}
+  .pinsp-chip{font-size:10px}
+  .party-grid{gap:3px 4px!important}
+  .pcell{padding:4px 6px;gap:4px}
+  .pname{font-size:11px;min-width:24px}
+  .pinp{font-size:13px;min-height:34px}
+  .pdot{height:18px;width:4px}
+  .rseats{font-size:16px}
+  .rname{font-size:12px}
+  .rpct{font-size:9px}
+  .pill{font-size:9px}
+  .pill-val{font-size:10px}
+  .mcard{max-height:90vh;border-radius:12px}
+  .ptbl input[type="number"]{width:30px;font-size:9px}
+  .ptbl input[type="text"]{width:50px;font-size:10px}
+  #baseShareContainer{grid-template-columns:repeat(2,1fr)!important}
+}
+
+/* ═══ LANDSCAPE PHONE ═══ */
+@media(max-height:500px) and (orientation:landscape){
+  .shell{
+    grid-template-areas:"hdr hdr" "map res" "ctrl ctrl"!important;
+    grid-template-rows:40px 1fr auto!important;
+    grid-template-columns:1fr 240px!important;
+    height:100dvh!important;overflow:hidden!important
+  }
+  .mapzone{margin:4px 0 0 4px!important}
+  .resultzone{margin:4px 4px 0 0!important}
+  .ctrlzone{margin:0 4px 4px 4px!important;border-radius:0 0 12px 12px!important}
+  .party-grid{grid-template-columns:repeat(5,1fr)!important}
+  .ctrl-body{flex-direction:row!important}
+  .ctrl-side{width:140px!important;flex-direction:column!important}
+}
+`;
+  document.head.appendChild(style);
+
+  // 3. Touch: update province inspector on tap (since tooltip is hidden on mobile)
+  if('ontouchstart' in window || navigator.maxTouchPoints > 0){
+    document.addEventListener('touchstart', function(e){
+      const path = e.target.closest?.('path[id^="TR"]');
+      if(!path) return;
+      const prov = (typeof provinces !== 'undefined') ? 
+        provinces.find(p => p.id === path.id) : null;
+      if(prov && typeof updatePI === 'function') updatePI(prov);
+    }, {passive:true});
+  }
+})();
+</script>

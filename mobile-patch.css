@@ -1,0 +1,166 @@
+/* ═══ MOBILE RESPONSIVE — inject before .hidden{display:none!important} ═══ */
+
+/* --- Base tweaks (add to existing rules) --- */
+/* 
+  ON html,body rule, ADD:
+    overscroll-behavior:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation;
+
+  ON .shell rule, ADD:
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+
+  ON <meta viewport>, change to:
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+*/
+
+/* ═══ TABLET (≤840px) ═══ */
+@media(max-width:840px){
+  html,body{height:auto;overflow:auto;overflow-x:hidden}
+  
+  /* Stack everything vertically */
+  .shell{
+    grid-template-areas:"hdr" "map" "ctrl" "res";
+    grid-template-rows:auto minmax(36vh,50vh) auto auto;
+    grid-template-columns:1fr;
+    height:auto;min-height:100dvh;gap:0;overflow:visible
+  }
+
+  /* Header: wrap tabs below */
+  .hdr{flex-wrap:wrap;gap:6px;padding:8px 12px;height:auto;min-height:46px}
+  .logo{font-size:16px}
+  .mtabs{order:10;width:100%;justify-content:center;margin:4px 0 0 0!important}
+  .mtab{padding:6px 14px;font-size:11px}
+  .svbadge{display:none}
+  
+  /* Search: expand to fill */
+  .srchw{order:5;flex:1;min-width:100px}
+  .srch{width:100%;font-size:13px;padding:8px 10px 8px 28px}
+  .srch:focus{width:100%;box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+  #btnClearSearch{order:6}
+  .abtn{font-size:10px;padding:6px 10px;min-height:32px}
+
+  /* Map zone: full width, rounded */
+  .mapzone{margin:4px;border-radius:var(--r-md);border:1px solid var(--card-border)}
+  .mbadge{font-size:8px;padding:4px 8px;top:6px;right:6px}
+  .maps-row{padding:2px}
+  .map-panel-label{font-size:8px;padding:2px 6px}
+  .map-panel path{stroke-width:.9;-webkit-tap-highlight-color:transparent}
+  /* Multi-map: stack 2-up vertically */
+  .maps-row[data-count="2"]{grid-template:1fr 1fr/1fr}
+  .maps-row[data-count="3"]{grid-template:1fr 1fr/1fr 1fr}
+
+  /* Control zone: flexible height */
+  .ctrlzone{margin:4px;border-radius:var(--r-md);border:1px solid var(--card-border)}
+  .ctrl-header{flex-wrap:wrap;gap:6px;padding:8px 12px}
+  .ctrl-header>div:last-child{gap:4px}
+  #inspectorActive{flex-wrap:wrap;gap:6px}
+  .pinsp-data{gap:6px}
+  .pinsp-chip{font-size:11px}
+  
+  /* Party grid: 2 columns instead of 5 */
+  .ctrl-body{flex-direction:column;padding:8px;gap:8px;overflow:visible}
+  .party-grid{
+    grid-template-columns:repeat(2,1fr);
+    grid-template-rows:auto;
+    gap:4px 6px
+  }
+  .pcell{padding:6px 8px;gap:5px}
+  .pname{font-size:12px;min-width:28px}
+  .pinp{font-size:14px;padding:6px 2px;min-height:36px}
+  .tgl{width:28px;height:16px}
+  .tgl::after{width:12px;height:12px}
+  .tgl.on::after{transform:translateX(12px)}
+  
+  /* Run button: full width below grid */
+  .ctrl-side{width:100%;flex-direction:row;gap:8px;align-items:center}
+  .runbtn{flex:1;padding:14px 16px;font-size:14px}
+  
+  /* Results zone: below everything, full width */
+  .resultzone{margin:4px;border-radius:var(--r-md);min-height:auto;max-height:none}
+  .res-body{overflow:visible}
+  .res-inner{overflow:visible}
+  .res-rows{overflow:visible}
+  .rrow{padding:6px 14px;flex-shrink:0;min-height:36px}
+  .rseats{font-size:18px}
+
+  /* Tooltip: disable on touch (inspector shows data) */
+  #tooltip{display:none!important}
+
+  /* Modals: nearly full-screen */
+  .moverlay{padding:8px;align-items:flex-start;padding-top:6vh}
+  .mcard{
+    max-width:100%!important;
+    max-height:85vh;
+    overflow-y:auto;
+    border-radius:var(--r-md);
+    -webkit-overflow-scrolling:touch
+  }
+  #presidential-inputs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #second-round-inputs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .ptbl{font-size:10px}
+  .ptbl th,.ptbl td{padding:4px 3px}
+  .ptbl input[type="number"]{width:34px;font-size:10px;padding:4px 1px}
+  .ptbl input[type="text"]{width:60px;font-size:11px}
+
+  /* Toast */
+  #toastHost{bottom:8px;right:8px;left:8px}
+  .toast{text-align:center}
+}
+
+/* ═══ PHONE (≤480px) ═══ */
+@media(max-width:480px){
+  .shell{grid-template-rows:auto minmax(28vh,38vh) auto auto}
+  
+  /* Tighter header */
+  .hdr{padding:6px 10px;gap:4px}
+  .hdr>div[style*="flex:1"]{display:none}
+  .hdr>div[style*="gap:5px"]{flex-wrap:wrap;gap:3px}
+  .mtab{padding:5px 10px;font-size:10px}
+  .logo{font-size:15px}
+  
+  /* Full-width inspector controls */
+  .ctrl-header{padding:6px 10px}
+  .ctrl-header>div:last-child{width:100%;display:flex}
+  .ctrl-header>div:last-child button{flex:1;font-size:9px}
+  .pinsp-name{font-size:13px}
+  .pinsp-chip{font-size:10px}
+  
+  /* Party grid stays 2-col but tighter */
+  .party-grid{gap:3px 4px}
+  .pcell{padding:4px 6px;gap:4px}
+  .pname{font-size:11px;min-width:24px}
+  .pinp{font-size:13px;min-height:34px}
+  .pdot{height:18px;width:4px}
+  
+  /* Results */
+  .rseats{font-size:16px}
+  .rname{font-size:12px}
+  .rpct{font-size:9px}
+  .pill{font-size:9px}
+  .pill-val{font-size:10px}
+  
+  /* Modal tables scroll horizontally */
+  .mcard{max-height:90vh;border-radius:12px}
+  .ptbl input[type="number"]{width:30px;font-size:9px}
+  .ptbl input[type="text"]{width:50px;font-size:10px}
+  
+  /* Create party modal */
+  #baseShareContainer{grid-template-columns:repeat(2,1fr)!important}
+}
+
+/* ═══ LANDSCAPE PHONE ═══ */
+@media(max-height:500px) and (orientation:landscape){
+  .shell{
+    grid-template-areas:"hdr hdr" "map res" "ctrl ctrl";
+    grid-template-rows:40px 1fr auto;
+    grid-template-columns:1fr 240px;
+    height:100dvh;overflow:hidden
+  }
+  .mapzone{margin:4px 0 0 4px}
+  .resultzone{margin:4px 4px 0 0}
+  .ctrlzone{margin:0 4px 4px 4px;border-radius:0 0 var(--r-md) var(--r-md)}
+  .party-grid{grid-template-columns:repeat(5,1fr)}
+  .ctrl-body{flex-direction:row}
+  .ctrl-side{width:140px;flex-direction:column}
+}
