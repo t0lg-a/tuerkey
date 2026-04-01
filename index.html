@@ -610,26 +610,213 @@ let districtRatiosData=null; // loaded on demand
 /* Province code → name for matching GeoJSON network field to election data */
 const PROV_CODE_NAME=Object.fromEntries(provinces.map(p=>[p.id,p.displayName]));
 
+function normalizeAdminLevel(v){
+  const s=String(v??'').trim().toLowerCase();
+  return s.replace(/^level\s*/,'');
+}
+
+function getFeatureBBox(f){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,ok=false;
+  (function walk(coords){
+    if(!Array.isArray(coords)) return;
+    if(typeof coords[0]==='number'&&typeof coords[1]==='number'){
+      const x=coords[0],y=coords[1];
+      if(Number.isFinite(x)&&Number.isFinite(y)){
+        if(x<minX) minX=x;
+        if(x>maxX) maxX=x;
+        if(y<minY) minY=y;
+        if(y>maxY) maxY=y;
+        ok=true;
+      }
+      return;
+    }
+    coords.forEach(walk);
+  })(f?.geometry?.coordinates);
+  if(!ok) return null;
+  return {minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY,area:Math.max(0,(maxX-minX)*(maxY-minY))};
+}
+function quantileSorted(arr,q){
+  if(!arr.length) return 0;
+  const pos=(arr.length-1)*q;
+  const base=Math.floor(pos);
+  const rest=pos-base;
+  const a=arr[base],b=arr[Math.min(base+1,arr.length-1)];
+  return a+(b-a)*rest;
+}
+function extractGeometryPoints(geometry){
+  const pts=[];
+  (function walk(coords){
+    if(!Array.isArray(coords)) return;
+    if(typeof coords[0]==='number'&&typeof coords[1]==='number'){
+      const x=coords[0],y=coords[1];
+      if(Number.isFinite(x)&&Number.isFinite(y)) pts.push([x,y]);
+      return;
+    }
+    coords.forEach(walk);
+  })(geometry?.coordinates);
+  return pts;
+}
+function mapCoordsDeep(coords,fn){
+  if(!Array.isArray(coords)) return coords;
+  if(typeof coords[0]==='number'&&typeof coords[1]==='number') return fn(coords);
+  return coords.map(c=>mapCoordsDeep(c,fn));
+}
+function cloneFeatureWithCoords(f,newCoords){
+  return {
+    type:'Feature',
+    properties:{...(f.properties||{})},
+    geometry:{type:f.geometry.type,coordinates:newCoords}
+  };
+}
+function scoreTurkeyPoints(points){
+  // loose Turkey envelope in lon/lat
+  const LON_MIN=25, LON_MAX=46.8, LAT_MIN=35, LAT_MAX=43.5;
+  if(!points.length) return {inside:0,total:0,bbox:null};
+  let inside=0,minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const [x,y] of points){
+    if(x>=LON_MIN&&x<=LON_MAX&&y>=LAT_MIN&&y<=LAT_MAX) inside++;
+    if(x<minX) minX=x; if(x>maxX) maxX=x;
+    if(y<minY) minY=y; if(y>maxY) maxY=y;
+  }
+  return {inside,total:points.length,bbox:{minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY,area:Math.max(0,(maxX-minX)*(maxY-minY))}};
+}
+function normalizeDistrictFeatureGeometry(f){
+  const pts=extractGeometryPoints(f?.geometry);
+  if(!pts.length) return null;
+  const raw=scoreTurkeyPoints(pts);
+  const swappedPts=pts.map(([x,y])=>[y,x]);
+  const swp=scoreTurkeyPoints(swappedPts);
+
+  // choose the orientation that actually looks like Turkey lon/lat and has plausible district extent
+  const rawPlausible = raw.bbox && raw.bbox.width<=4.5 && raw.bbox.height<=4.5;
+  const swpPlausible = swp.bbox && swp.bbox.width<=4.5 && swp.bbox.height<=4.5;
+  const rawFrac = raw.total ? raw.inside/raw.total : 0;
+  const swpFrac = swp.total ? swp.inside/swp.total : 0;
+
+  let useSwap=false;
+  if(swpFrac>rawFrac+0.2) useSwap=true;
+  else if(!rawPlausible && swpPlausible) useSwap=true;
+  else if(raw.inside===0 && swp.inside>0) useSwap=true;
+
+  const feature = useSwap
+    ? cloneFeatureWithCoords(f,mapCoordsDeep(f.geometry.coordinates,([x,y])=>[y,x]))
+    : f;
+  const bbox = useSwap ? swp.bbox : raw.bbox;
+  const frac = useSwap ? swpFrac : rawFrac;
+  return {feature,bbox,insideFraction:frac,insideCount:useSwap?swp.inside:raw.inside,totalCount:useSwap?swp.total:raw.total,swapped:useSwap};
+}
+function splitGeometryIntoPolygons(geometry){
+  if(!geometry||!geometry.coordinates) return [];
+  if(geometry.type==='Polygon') return [geometry.coordinates];
+  if(geometry.type==='MultiPolygon') return geometry.coordinates;
+  return [];
+}
+function polygonBBox(poly){
+  const pts=extractGeometryPoints({type:'Polygon',coordinates:poly});
+  const s=scoreTurkeyPoints(pts);
+  return {pts,bbox:s.bbox,inside:s.inside,total:s.total};
+}
+function sanitizeNormalizedDistrictFeature(norm){
+  const feature=norm?.feature;
+  if(!feature?.geometry) return null;
+  const polys=splitGeometryIntoPolygons(feature.geometry);
+  if(!polys.length) return null;
+
+  const kept=[];
+  for(const poly of polys){
+    if(!Array.isArray(poly)||!poly.length) continue;
+    const outer=Array.isArray(poly[0]) ? poly[0] : null;
+    if(!outer||outer.length<4) continue;
+    const {bbox,inside,total}=polygonBBox(poly);
+    if(!bbox) continue;
+    const insideFrac=total?inside/total:0;
+    const intersectsTurkey=bbox.maxX>=25 && bbox.minX<=46.8 && bbox.maxY>=35 && bbox.minY<=43.5;
+    if(!intersectsTurkey) continue;
+    if(!(bbox.width>0&&bbox.height>0)) continue;
+    if(bbox.width>3.2 || bbox.height>3.2) continue;
+    if(bbox.area>1.8) continue;
+    if(inside===0 && insideFrac<0.02) continue;
+
+    const shellBBox=polygonBBox([outer]).bbox;
+    const rings=poly.filter((ring,idx)=>{
+      if(!Array.isArray(ring)||ring.length<4) return false;
+      const rb=polygonBBox([ring]).bbox;
+      if(!rb) return false;
+      if(idx===0) return true;
+      return rb.minX>=shellBBox.minX-0.05 && rb.maxX<=shellBBox.maxX+0.05 && rb.minY>=shellBBox.minY-0.05 && rb.maxY<=shellBBox.maxY+0.05;
+    });
+    if(rings.length) kept.push(rings);
+  }
+  if(!kept.length) return null;
+
+  const geom=kept.length===1 ? {type:'Polygon',coordinates:kept[0]} : {type:'MultiPolygon',coordinates:kept};
+  const pts=extractGeometryPoints(geom);
+  const score=scoreTurkeyPoints(pts);
+  if(!score.bbox) return null;
+  return {feature:{type:'Feature',properties:{...(feature.properties||{})},geometry:geom},bbox:score.bbox,insideCount:score.inside,totalCount:score.total,insideFraction:score.total?score.inside/score.total:0};
+}
+function getRenderableDistrictFeatures(){
+  const districtHints=new Set(['6','7','8','district','ilce','ilçe','subprovince','sub-provincial','municipality','belediye']);
+  const all=(districtGeoJSON?.features||[]).filter(f=>{
+    if(!(f&&f.geometry&&(f.geometry.type==='Polygon'||f.geometry.type==='MultiPolygon')&&f.properties&&String(f.properties.name||'').trim())) return false;
+    const lvl=normalizeAdminLevel(f.properties?.admin_level);
+    return !lvl || districtHints.has(lvl);
+  });
+  if(!all.length) return [];
+
+  const normalized=all.map(normalizeDistrictFeatureGeometry).filter(Boolean);
+  if(!normalized.length) return [];
+
+  let cleaned=normalized.map(sanitizeNormalizedDistrictFeature).filter(Boolean);
+  if(!cleaned.length) return [];
+
+  const widths=cleaned.map(x=>x.bbox.width).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  const heights=cleaned.map(x=>x.bbox.height).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  const areas=cleaned.map(x=>x.bbox.area).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  if(!widths.length||!heights.length||!areas.length) return cleaned.map(x=>x.feature);
+
+  const p99W=quantileSorted(widths,0.99), p99H=quantileSorted(heights,0.99), p99A=quantileSorted(areas,0.99);
+  const capW=Math.max(0.9,p99W*2.2);
+  const capH=Math.max(0.9,p99H*2.2);
+  const capA=Math.max(0.25,p99A*4.5);
+  let statFiltered=cleaned.filter(({bbox})=>bbox.width<=capW&&bbox.height<=capH&&bbox.area<=capA);
+  if(statFiltered.length<Math.max(250,Math.floor(cleaned.length*0.7))) statFiltered=cleaned;
+  return statFiltered.map(x=>x.feature);
+}
 async function loadDistrictData(){
   if(districtGeoJSON&&districtRatiosData) return true;
   try{
-    const [geoRes,ratRes]=await Promise.all([
-      fetch(DATA_BASE+'district_clean.geojson'),
-      fetch(DATA_BASE+'district_ratios.json')
-    ]);
-    if(!geoRes.ok||!ratRes.ok) throw new Error('Fetch failed');
+    console.log('[İlçe] Fetching district_clean.geojson...');
+    const geoRes=await fetch(DATA_BASE+'district_clean.geojson');
+    if(!geoRes.ok) throw new Error(`GeoJSON fetch failed: ${geoRes.status}`);
     districtGeoJSON=await geoRes.json();
-    districtRatiosData=await ratRes.json();
-    console.log(`Districts loaded: ${districtGeoJSON.features.length} geometries, ${Object.keys(districtRatiosData.districts).length} ratios`);
-    return true;
-  }catch(e){console.error('District data load failed:',e);return false}
+    console.log(`[İlçe] GeoJSON loaded: ${districtGeoJSON.features.length} total features`);
+    const valid=districtGeoJSON.features.filter(f=>f.geometry&&f.properties&&f.properties.admin_level);
+    const renderable=getRenderableDistrictFeatures();
+    console.log(`[İlçe] Features with admin_level: ${valid.length}`);
+    console.log(`[İlçe] Renderable district features: ${renderable.length}`);
+  }catch(e){console.error('[İlçe] GeoJSON load failed:',e);return false}
+  try{
+    console.log('[İlçe] Fetching district_ratios.json...');
+    const ratRes=await fetch(DATA_BASE+'district_ratios.json');
+    if(!ratRes.ok){
+      console.warn('[İlçe] district_ratios.json not found:', ratRes.status);
+      districtRatiosData={national_pct:{},provinces:{},districts:{}};
+    }else{
+      districtRatiosData=await ratRes.json();
+      console.log(`[İlçe] Ratios loaded: ${Object.keys(districtRatiosData.districts||{}).length} districts`);
+    }
+  }catch(e){console.warn('[İlçe] Ratios load failed:',e);districtRatiosData={national_pct:{},provinces:{},districts:{}};}
+  return true;
 }
 
 function setMapGranularity(g){
+  console.log(`[İlçe] Switching to: ${g}`);
   mapGranularity=g;
   document.querySelectorAll('.map-toggle .mtgl').forEach(b=>b.classList.toggle('active',b.dataset.gran===g));
   if(g==='district'){
     loadDistrictData().then(ok=>{
+      console.log(`[İlçe] Load result: ${ok}, features: ${districtGeoJSON?.features?.length||0}`);
       if(!ok){if(typeof showToast==='function')showToast('İlçe verisi yüklenemedi.','bad');mapGranularity='province';return}
       rebuildMaps();updateMapColors();
     });
@@ -696,35 +883,91 @@ function rebuildMaps(){
     panel.innerHTML=`<div class="map-panel-label">${MODE_LABELS[mode]||mode}${granLabel}</div>`;
 
     if(mapGranularity==='district'&&districtGeoJSON){
-      /* ── D3 district rendering ── */
-      const svg=d3.select(panel).append('svg')
-        .attr('viewBox','0 0 1000 500')
-        .attr('preserveAspectRatio','xMidYMid meet')
-        .style('width','100%').style('height','100%');
-      const proj=d3.geoMercator().center([35.5,39.2]).scale(2800).translate([500,250]);
-      const pathGen=d3.geoPath().projection(proj);
-      svg.selectAll('path')
-        .data(districtGeoJSON.features.filter(f=>f.properties.admin_level==='6'))
-        .join('path')
-        .attr('d',pathGen)
-        .attr('data-district-name',d=>d.properties.name||'')
-        .attr('data-network',d=>d.properties.network||'')
-        .style('fill','var(--map-fill)')
-        .style('stroke','var(--map-stroke)')
-        .style('stroke-width','.3')
-        .style('vector-effect','non-scaling-stroke')
-        .style('cursor','pointer')
-        .style('transition','fill .2s ease')
-        .on('mouseover',function(e,d){
-          d3.select(this).style('stroke','var(--ink)').style('stroke-width','1.5')
-            .style('filter','drop-shadow(0 2px 6px rgba(0,0,0,.15))');
-          handleDistrictMouseOver(e,d,mode);
-        })
-        .on('mousemove',handleMouseMove)
-        .on('mouseout',function(){
-          d3.select(this).style('stroke','var(--map-stroke)').style('stroke-width','.3').style('filter','');
+      /* ── Manual district rendering (no D3 geo projection) ── */
+      let features=getRenderableDistrictFeatures();
+      console.log(`[İlçe] Rendering ${features.length} district polygons`);
+      const W=1000,H=422,PAD=12;
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+      svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+      svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+      svg.style.width='100%'; svg.style.height='100%'; svg.style.display='block';
+      panel.appendChild(svg);
+      if(!features.length){
+        const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x',String(W/2)); t.setAttribute('y',String(H/2));
+        t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','middle');
+        t.setAttribute('fill','var(--muted)');
+        t.setAttribute('style','font-family:var(--sans);font-size:14px;font-weight:700');
+        t.textContent='İlçe geometrisi bulunamadı';
+        svg.appendChild(t);
+        container.appendChild(panel);
+        return;
+      }
+
+      const allPts=features.flatMap(f=>extractGeometryPoints(f.geometry));
+      const scored=scoreTurkeyPoints(allPts);
+      const bbox=scored.bbox||{minX:25.5,maxX:45.0,minY:35.5,maxY:42.8};
+      const lonMin=Math.max(25.0, bbox.minX-0.2);
+      const lonMax=Math.min(46.8, bbox.maxX+0.2);
+      const latMin=Math.max(35.0, bbox.minY-0.2);
+      const latMax=Math.min(43.5, bbox.maxY+0.2);
+      const lonSpan=Math.max(1e-6, lonMax-lonMin);
+      const latSpan=Math.max(1e-6, latMax-latMin);
+      const scale=Math.min((W-PAD*2)/lonSpan, (H-PAD*2)/latSpan);
+      const drawW=lonSpan*scale, drawH=latSpan*scale;
+      const offX=(W-drawW)/2, offY=(H-drawH)/2;
+      const project=([lon,lat])=>[offX+(lon-lonMin)*scale, offY+(latMax-lat)*scale];
+
+      const geometryToPath=(geom)=>{
+        const polys=splitGeometryIntoPolygons(geom);
+        let d='';
+        for(const poly of polys){
+          if(!Array.isArray(poly)||!poly.length) continue;
+          for(const ring of poly){
+            if(!Array.isArray(ring)||ring.length<4) continue;
+            let started=false;
+            for(const pt of ring){
+              if(!Array.isArray(pt)||pt.length<2) continue;
+              const [x,y]=project(pt);
+              if(!Number.isFinite(x)||!Number.isFinite(y)) continue;
+              d+=`${started?'L':'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+              started=true;
+            }
+            if(started) d+='Z';
+          }
+        }
+        return d;
+      };
+
+      for(const feat of features){
+        const d=geometryToPath(feat.geometry);
+        if(!d) continue;
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d',d);
+        path.setAttribute('data-district-name',feat.properties?.name||'');
+        path.setAttribute('data-network',feat.properties?.network||'');
+        path.setAttribute('fill','var(--map-fill)');
+        path.setAttribute('stroke','var(--map-stroke)');
+        path.setAttribute('stroke-width','.3');
+        path.style.vectorEffect='non-scaling-stroke';
+        path.style.cursor='pointer';
+        path.style.transition='fill .2s ease';
+        path.addEventListener('mouseover',e=>{
+          path.setAttribute('stroke','var(--ink)');
+          path.setAttribute('stroke-width','1.5');
+          path.style.filter='drop-shadow(0 2px 6px rgba(0,0,0,.15))';
+          handleDistrictMouseOver(e,feat,mode);
+        });
+        path.addEventListener('mousemove',handleMouseMove);
+        path.addEventListener('mouseout',()=>{
+          path.setAttribute('stroke','var(--map-stroke)');
+          path.setAttribute('stroke-width','.3');
+          path.style.filter='';
           handleMouseOut();
         });
+        svg.appendChild(path);
+      }
     }else if(template){
       /* ── Province SVG clone ── */
       const svg=template.cloneNode(true);
