@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Türkiye Seçim Simülasyonu</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-app:#f3f4f6;--bg-g1:#eef2ff;--bg-g2:#fff1f2;
+  --ink:#111827;--ink-dim:#374151;--muted:#6b7280;--muted-lt:#9ca3af;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  --card-bg:rgba(255,255,255,0.85);--card-border:rgba(255,255,255,0.6);
+  --card-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -1px rgba(0,0,0,0.03);
+  --line:#e5e7eb;--line-strong:#d1d5db;
+  --blue:#2563eb;--blue-dark:#1e40af;--blue-soft:#dbeafe;
+  --ok:#10b981;--warn:#f59e0b;
+  --r-lg:16px;--r-md:12px;--r-sm:8px;
+  --map-fill:#cbd5e1;--map-stroke:white;
+}
+[data-theme="dark"]{
+  --bg-app:#111827;--bg-g1:rgba(30,64,175,0.15);--bg-g2:rgba(153,27,27,0.1);
+  --ink:#f9fafb;--ink-dim:#d1d5db;--muted:#9ca3af;--muted-lt:#6b7280;
+  --card-bg:rgba(31,41,55,0.85);--card-border:rgba(55,65,81,0.6);
+  --card-shadow:0 4px 6px -1px rgba(0,0,0,0.2),0 2px 4px -1px rgba(0,0,0,0.15);
+  --line:#374151;--line-strong:#4b5563;
+  --map-fill:#334155;--map-stroke:rgba(255,255,255,0.15);
+}
+html,body{height:100vh;overflow:hidden;font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--ink);background:var(--bg-app)}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(circle at 10% 10%,var(--bg-g1),transparent 40%),radial-gradient(circle at 90% 20%,var(--bg-g2),transparent 40%);background-attachment:fixed;pointer-events:none;z-index:0}
+
+/* ═══ SHELL ═══ */
+.shell{position:relative;z-index:1;display:grid;grid-template-areas:"hdr hdr" "map res" "ctrl res";grid-template-rows:46px 1fr 174px;grid-template-columns:1fr 290px;height:100vh;overflow:hidden;gap:0 8px}
+.hdr{grid-area:hdr;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--line);background:var(--card-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:50;position:relative}
+.hdr::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--blue-dark),var(--blue),#a78bfa,#f472b6,transparent 80%);opacity:.5}
+.mapzone{grid-area:map;position:relative;display:flex;flex-direction:column;overflow:hidden;margin:8px 0 0 8px;border-radius:var(--r-lg) var(--r-lg) 0 0;background:var(--card-bg);backdrop-filter:blur(20px);border:1px solid var(--card-border);border-bottom:none;box-shadow:var(--card-shadow),inset 0 0 40px rgba(0,0,0,.015)}
+.resultzone{grid-area:res;overflow:hidden;margin:8px 8px 8px 0;border-radius:var(--r-lg);background:var(--card-bg);backdrop-filter:blur(20px);border:1px solid var(--card-border);box-shadow:var(--card-shadow);display:flex;flex-direction:column}
+.ctrlzone{grid-area:ctrl;overflow:hidden;margin:0 0 8px 8px;border-radius:0 0 var(--r-lg) var(--r-lg);background:var(--card-bg);backdrop-filter:blur(20px);border:1px solid var(--card-border);border-top:1px solid var(--line);box-shadow:var(--card-shadow);display:flex;flex-direction:column}
+
+/* ═══ MAP ═══ */
+.mbadge{position:absolute;top:12px;right:12px;background:var(--card-bg);backdrop-filter:blur(12px);border:1px solid var(--card-border);border-radius:var(--r-sm);padding:6px 14px;font-family:var(--mono);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.05em;z-index:10}
+.pinsp-name{font-size:15px;font-weight:900;color:var(--ink);letter-spacing:-.02em}
+.pinsp-hint{font-size:11px;font-weight:600;color:var(--muted)}
+.pinsp-data{display:flex;flex-wrap:wrap;gap:12px}
+.pinsp-chip{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700}
+.pinsp-chip .pcd{width:7px;height:7px;border-radius:50%}
+.pinsp-chip .pcn{color:var(--ink-dim)}
+.pinsp-chip .pcv{font-family:var(--mono);font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.pinsp-chip .pcs{font-family:var(--mono);font-size:9px;font-weight:800;background:var(--blue);color:white;padding:1px 6px;border-radius:4px}
+
+/* ═══ CONTROL BAR ═══ */
+.ctrl-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line);flex-shrink:0}
+.ctrl-body{flex:1;display:flex;gap:10px;padding:10px 12px;overflow:hidden;align-items:stretch}
+.party-grid{display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:1fr 1fr;gap:5px 8px;flex:1;min-width:0}
+.pcell{display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:var(--r-sm);background:rgba(0,0,0,.018);border:1px solid var(--line);transition:all .15s}
+[data-theme="dark"] .pcell{background:rgba(255,255,255,.03)}
+.pcell:hover{border-color:var(--line-strong);background:rgba(0,0,0,.03)}
+.pcell:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.08);background:rgba(37,99,235,.02)}
+.pdot{width:5px;height:22px;border-radius:3px;flex-shrink:0;box-shadow:0 0 6px rgba(0,0,0,.05)}
+.pname{font-size:13px;font-weight:800;color:var(--ink);flex-shrink:0;min-width:32px;letter-spacing:-.01em}
+.pinp{width:100%;min-width:0;padding:5px 2px;font-family:var(--mono);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center;background:transparent;border:none;color:var(--ink);outline:none}
+.tgl{width:26px;height:15px;background:var(--line-strong);border-radius:8px;cursor:pointer;border:none;padding:0;position:relative;transition:background .2s;flex-shrink:0}
+.tgl::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;background:white;border-radius:50%;transition:transform .2s cubic-bezier(.2,.8,.2,1);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.tgl.on{background:var(--blue)}.tgl.on::after{transform:translateX(11px)}
+.ctrl-side{display:flex;flex-direction:column;gap:6px;justify-content:center;flex-shrink:0;width:160px}
+.runbtn{padding:12px 18px;border-radius:var(--r-md);font-size:14px;font-weight:800;color:white;background:linear-gradient(135deg,var(--blue),var(--blue-dark));border:none;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.22),inset 0 1px 0 rgba(255,255,255,.15);transition:all .2s;letter-spacing:.01em}
+.runbtn:hover{box-shadow:0 8px 24px rgba(37,99,235,.35),inset 0 1px 0 rgba(255,255,255,.15);transform:translateY(-1px)}
+.runbtn:active{transform:scale(.98);box-shadow:0 2px 8px rgba(37,99,235,.2)}
+
+/* ═══ RESULTS ═══ */
+.res-header{padding:10px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
+.res-body{flex:1;overflow:hidden;padding:0;display:flex;flex-direction:column}
+.res-inner{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.hbar{display:flex;height:10px;border-radius:5px;overflow:hidden;position:relative;background:rgba(0,0,0,.03);flex-shrink:0}
+[data-theme="dark"] .hbar{background:rgba(255,255,255,.04)}
+.hseg{transition:width .4s cubic-bezier(.2,.8,.2,1);min-width:0}
+.majline{position:absolute;width:2px;top:-2px;bottom:-2px;background:var(--ink);opacity:.35;z-index:2;border-radius:1px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;flex-shrink:0}
+.pill{display:flex;align-items:center;gap:3px;font-size:10px;font-weight:700}
+.pill-dot{width:6px;height:6px;border-radius:2px;flex-shrink:0}
+.pill-name{color:var(--ink-dim)}
+.pill-val{font-family:var(--mono);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.res-rows{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.rrow{display:flex;align-items:center;justify-content:space-between;padding:4px 14px;border-bottom:1px solid var(--line);position:relative;overflow:hidden;transition:background .15s;flex-shrink:1;min-height:0}
+.rrow:hover{background:rgba(0,0,0,.015)}
+[data-theme="dark"] .rrow:hover{background:rgba(255,255,255,.02)}
+.rrow:last-child{border-bottom:none}
+.rbar{position:absolute;left:0;top:0;bottom:0;opacity:.06;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.rinfo{display:flex;align-items:center;gap:8px;z-index:1;position:relative}
+.rdot{width:4px;height:18px;border-radius:2px;box-shadow:0 0 6px rgba(0,0,0,.04)}
+.rname{font-size:13px;font-weight:800;color:var(--ink)}
+.rpct{font-family:var(--mono);font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
+.rseats{font-family:var(--mono);font-weight:900;font-size:20px;font-variant-numeric:tabular-nums;color:var(--ink);z-index:1;position:relative;letter-spacing:-.03em}
+.slbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+/* ═══ HEADER ═══ */
+.logo{font-size:18px;font-weight:900;letter-spacing:-.03em;color:var(--ink)}
+.logo span{color:var(--blue);background:linear-gradient(135deg,var(--blue),#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.mtabs{display:flex;background:rgba(0,0,0,.04);border-radius:10px;padding:3px;gap:2px}
+[data-theme="dark"] .mtabs{background:rgba(255,255,255,.06)}
+.mtab{padding:7px 18px;border-radius:8px;font-size:12px;font-weight:700;color:var(--muted);background:transparent;border:none;cursor:pointer;transition:all .25s cubic-bezier(.2,.8,.2,1);white-space:nowrap}
+.mtab:hover{color:var(--ink-dim);background:rgba(0,0,0,.03)}
+.mtab.active{background:white;color:var(--blue-dark);box-shadow:0 1px 4px rgba(0,0,0,.08),0 0 0 0.5px rgba(0,0,0,.03)}
+[data-theme="dark"] .mtab.active{background:rgba(255,255,255,.1);color:#93c5fd;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.abtn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;color:var(--muted);background:rgba(0,0,0,.03);border:1px solid var(--line);cursor:pointer;transition:all .15s;white-space:nowrap}
+[data-theme="dark"] .abtn{background:rgba(255,255,255,.05)}
+.abtn:hover{background:rgba(0,0,0,.06);color:var(--ink-dim)}
+.abtn:active{transform:scale(.97)}
+.svbadge{font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 8px;border-radius:4px;background:rgba(0,0,0,.04);color:var(--muted-lt);letter-spacing:.03em}
+.srch{width:180px;padding:7px 10px 7px 30px;font-size:12px;font-weight:600;background:rgba(0,0,0,.03);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);outline:none;transition:all .2s;font-family:var(--sans)}
+[data-theme="dark"] .srch{background:rgba(255,255,255,.05)}
+.srch:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1);width:220px}
+.srchw{position:relative}.srchi{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted-lt);pointer-events:none}
+
+/* ═══ TOOLTIP ═══ */
+#tooltip{position:fixed;z-index:9999;pointer-events:none;background:rgba(255,255,255,.98);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-radius:var(--r-lg);border:none;box-shadow:0 0 0 .5px rgba(0,0,0,.02),0 1px 3px rgba(0,0,0,.04),0 8px 24px -4px rgba(0,0,0,.12),0 24px 56px -12px rgba(0,0,0,.08);min-width:200px;overflow:hidden;transition:opacity .12s;color:var(--ink)}
+[data-theme="dark"] #tooltip{background:rgba(17,24,39,.96);color:#f9fafb;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 8px 24px rgba(0,0,0,.4)}
+
+/* ═══ MODALS ═══ */
+.moverlay{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:99990}
+.mcard{background:var(--card-bg);backdrop-filter:blur(20px);border:1px solid var(--card-border);border-radius:20px;box-shadow:0 25px 80px rgba(0,0,0,.18);width:100%;overflow:hidden}
+.ptbl{width:100%;border-collapse:collapse;font-size:11px}
+.ptbl th,.ptbl td{padding:5px 4px;text-align:center}
+.ptbl thead th{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-lt);border-bottom:1px solid var(--line);background:var(--card-bg);position:sticky;top:0;z-index:2}
+.ptbl input[type="number"]{width:40px;padding:4px 2px;font-family:var(--mono);font-size:11px;font-weight:600;text-align:center;background:rgba(0,0,0,.02);border:1px solid var(--line);border-radius:6px;color:var(--ink);outline:none;font-variant-numeric:tabular-nums}
+.ptbl input[type="number"]:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.08)}
+.ptbl input[type="text"]{width:72px;padding:3px 4px;font-size:12px;font-weight:700;background:transparent;border:none;color:var(--ink);outline:none}
+
+/* ═══ MISC ═══ */
+/* Kill spinner arrows */
+input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input[type="number"]{-moz-appearance:textfield;appearance:textfield}
+/* Multi-map layout: 1=full, 2=stack, 3=1top+2bottom */
+.maps-row{flex:1;display:grid;min-height:0;overflow:hidden;gap:1px;padding:4px}
+.maps-row[data-count="1"]{grid-template:1fr/1fr}
+.maps-row[data-count="2"]{grid-template:1fr 1fr/1fr}
+.maps-row[data-count="3"]{grid-template:1fr 1fr/1fr 1fr}
+.maps-row[data-count="3"] .map-panel:first-child{grid-column:1/3}
+.map-panel{display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;position:relative;overflow:hidden;border-radius:var(--r-sm);background:rgba(0,0,0,.01)}
+[data-theme="dark"] .map-panel{background:rgba(255,255,255,.01)}
+.map-panel-label{position:absolute;top:6px;left:6px;background:var(--card-bg);backdrop-filter:blur(12px);border:1px solid var(--card-border);border-radius:5px;padding:3px 8px;font-size:9px;font-weight:800;letter-spacing:.05em;color:var(--muted);z-index:10;text-transform:uppercase}
+.map-panel svg{width:100%;height:100%;display:block;max-height:100%}
+.map-panel path{fill:var(--map-fill);stroke:var(--map-stroke);stroke-width:.7;vector-effect:non-scaling-stroke;transition:fill .2s ease,filter .2s ease;cursor:pointer}
+.map-panel path:hover{stroke:var(--ink);stroke-width:2;filter:drop-shadow(0 4px 12px rgba(0,0,0,.18))}
+.fade-in{animation:fadeIn .3s ease-out}
+@keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.toast{animation:toastIn .25s ease-out;backdrop-filter:blur(8px)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+.map-panel path:focus-visible{outline:none;stroke:var(--blue);stroke-width:2.5;filter:drop-shadow(0 0 10px rgba(37,99,235,.3))}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.hidden{display:none!important}
+.map-toggle{display:flex;background:rgba(0,0,0,.04);border-radius:8px;padding:2px;gap:1px}
+[data-theme="dark"] .map-toggle{background:rgba(255,255,255,.06)}
+.map-toggle .mtgl{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;color:var(--muted);background:transparent;border:none;cursor:pointer;transition:all .2s;white-space:nowrap;font-family:var(--sans)}
+.map-toggle .mtgl:hover{color:var(--ink-dim)}
+.map-toggle .mtgl.active{background:white;color:var(--blue-dark);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+[data-theme="dark"] .map-toggle .mtgl.active{background:rgba(255,255,255,.1);color:#93c5fd}
+</style>
+</head>
+<body>
+<div class="shell">
+<!-- ═══ HEADER ═══ -->
+<header class="hdr">
+  <div class="logo">Seçim<span>Sim</span></div>
+  <span class="svbadge" id="saveBadge">READY</span>
+  <div class="mtabs" style="margin-left:8px">
+    <button class="mtab btn-mode active" data-mode="parliamentary" onclick="toggleMode('parliamentary')">Parlamento</button>
+    <button class="mtab btn-mode" data-mode="pres1" onclick="toggleMode('pres1')">CB 1. Tur</button>
+    <button class="mtab btn-mode" data-mode="pres2" onclick="toggleMode('pres2')">CB 2. Tur</button>
+  </div>
+  <div style="flex:1"></div>
+  <div class="srchw">
+    <svg class="srchi" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input id="provinceSearch" type="search" placeholder="İl ara…" class="srch" autocomplete="off">
+  </div>
+  <button id="btnClearSearch" class="abtn" style="padding:5px 8px;margin-left:4px" aria-label="Temizle">✕</button>
+  <div style="display:flex;align-items:center;gap:5px;margin-left:10px">
+    <button id="btnAutoRun" class="abtn">Oto: <span style="font-family:var(--mono)">OFF</span></button>
+    <button id="btnTheme" class="abtn"><span id="themeLabel">☀ AURORA</span></button>
+    <button id="btnIO" class="abtn">I/O</button>
+    <button id="btnReset" class="abtn">↺</button>
+  </div>
+</header>
+
+<!-- ═══ MAP ZONE ═══ -->
+<div class="mapzone">
+  <div class="mbadge" style="display:flex;align-items:center;gap:10px">
+    <span>TR-81 PROJEKSİYON</span>
+    <div class="map-toggle">
+      <button class="mtgl active" data-gran="province" onclick="setMapGranularity('province')">İL</button>
+      <button class="mtgl" data-gran="district" onclick="setMapGranularity('district')">İLÇE</button>
+    </div>
+  </div>
+  <!-- Multi-map container -->
+  <div class="maps-row" id="mapsContainer"></div>
+  <!-- Hidden SVG template -->
+  <div id="svgTemplate" style="display:none">
+    <svg viewBox="0 0 1000 422" preserveAspectRatio="xMidYMid meet">
+      <g>
+                                    <path d="M889.7 82.2l-3.1 1.1-4.8 2.7-7.7 3.3-7.8 3.3-5.7 3-1.1 4.8-0.7 7.5-0.9 4.5-5.7 0.6-5.5 1.1-1.4-2.6-1.9-1.9-1.4-2.1-1-2.4-1.3-1.7-1.8-1.2-2.4-3.7-1-4.9 3-5.9 4.1-4.6 4-2 1.2-4.2-1.3-4.4-0.9-2.3-0.4-0.7-0.5-1.5-0.3-2.7-0.7-3.6 0.5 0 1-0.7 1.4-2.2 1.1-1 0.5-1.1 0.4-2.6 0.5-1 0.9-0.8 0.1 0 0.2 0 0.9-0.4 2.4-0.2 6.7 0.6 0.9 0.4-0.4 0.6-0.1 0.7-0.1 0.6-0.2 0.6-0.4 0.4-1 0.8-0.4 0.7 1.3 0.7 0.9 1 0.9 0.3 1.1-1.4 0.7-0.4 0.3 0.4 0.3 0.8 0.4 0.7 0.3 0.3 1.4 0.4 0.3 0.3 0.2 0.3 0.2 0.2 0.5 0.2 0.3 0.4 1.4 2.7 0.7 0.8 3.5 2.4 2.3 2 1.5 0.7 1.4 0.2 0 0.3-0.6 0.9-0.7 0.6-2.6 1.3 1.3 0.4 1.1-0.1 0.9 0.1 1 1.1 1.1 2.8 0.7 0.5 4.4-1.2 1.3-0.1 1.5 0.4 1.3 0.8 1.3 1.2 0.7 1.5-0.5 1.6z" id="TR75" name="Ardahan"></path>
+  
+  <path d="M842.7 61.7l0.7 3.6 0.3 2.7 0.5 1.5 0.4 0.7 0.9 2.3 1.3 4.4-1.2 4.2-4 2-4.1 4.6-3 5.9-2.8 0.3-2.8 0.6-3.3-0.3-3.2 0.3-1.6 0.8-1.5 1.3-0.6 2.5 0.3 2.7-1.2 2.5-1.9 1.9-0.9 2.5-0.1 2.8-2.2 3.3-4-2.3-3.8-1.1-3.7 1.1-4 2.6-4.4 1.7-3.2-2.9 0.6-5.3 1.3-2.2-0.4-2.1-1.7-0.6-5.9-0.9-3.7-2.1 0.7-2.5 4.5-5.3 1.1-0.6 1-0.9 0.4-1.3 0.7-1.3 2.6-1.7 1.3-2.9-1.4-1.6-1.9-0.9-0.5-1.1-0.6-1.1-0.9-0.6-0.9-0.9-0.9-2.1-0.4-2.5-1.3-3.3-0.1-0.2 4.1-3.3 1.2-0.4 1-0.6 0.5-0.2 1.7-0.2 0.6-0.2 0.9-0.7 0.7-1.1 0.5-1.4 0.2-1.4 0.5-0.3 2.7-2.5 0.7-1.2 5 2.2 0.7 0.1 1.4-0.1 1.2-0.6 0.3 0 0.1 0.3-0.1 0.5 0 0.5 0.2 0.4 0.6 0.2 1.4 0.2 0.6 0.2 1.9 1.7 0.6 0.3 0.4-0.3 1.9-1.6 1.5-2.1 0.7-0.5 1.9-0.8 3.4 1.3 1.7-0.5 0.6-0.4 0.7-0.1 0.7 0.1 0.7 0.4 1.4-0.5 0.8 0 0.6 0.5 0.8 0.7 1.2 0.1 2.3-0.1 8.3 3.2 0.7 0z" id="TR08" name="Artvin"></path>
+  
+    <path d="M886 315.3l-1.3-0.9-0.6-0.1-0.8 0.1-0.5 0.2-0.4 0.4-0.4 0.1-0.4 0-0.4-0.2-6.2-3.3-0.8-0.3-1.5 0.2-1.9 0.5-1.8 0.8-1.2 0.9-2.1 0.7-1.9-0.3-3.9-1.3-0.4-0.3-0.2-1-0.4-0.4-0.6 0-0.4 0-2.4 1-0.3 0.2-0.3 0.5-0.1 0.4 0 0.4-0.2 0.5-6 8.7-0.5 1.6-0.2 0.3-0.8 0.4-4 0.7-2.8 0.9-2.1 0.2 0-1.7-0.1-0.8-0.4-0.4-0.5-0.7 0.8-3.4-0.3-0.7-0.3-0.2-1.6-1.3-0.2-0.3-0.3-0.6-0.2-0.3-0.3-0.1-0.3 0.2-0.3 0.4-0.3 0.1-1.4-0.7-0.7-0.1 0-0.3 0.1-0.6-0.1-0.7-0.5-0.6-0.9 0.7-0.7 0.4-2.4 3.2-3.5 3.3-2.1 1.3-5.4 1.3-0.9-3.8-3-2.4-5.5-1.7-0.8-2.5 2-2.2 4.5-2.5 3.5-1.7 0.6-4-1.3-5.2-2.8-7.5 6.7 3.3 9.4 0.7 3.7-3.7 6.3 0.3 9.6 2.5 10 1.4 8.1 0.8 2.9-3 0.5-3.4 3.8-2 4.1 0.5 3.6 1.5 1.2 0.3 2.3-0.1 2.3-0.3-0.3 5.5-1 3.5 0.8 3.2 1.6 3.9-0.4 5.2-1.2 3.2-0.6 1.2z" id="TR73" name="Sirnak">
+  </path>
+    <path d="M886 315.3l0.6-1.2 1.2-3.2 0.4-5.2-1.6-3.9-0.8-3.2 1-3.5 0.3-5.5 6.4 0 6.3-1.1 1.3-0.7 1.4-0.5 2 0.3 2 0.8 3 0 3.1-0.6 2.6-1.6 1.2-3.3 1.9-3.4 3.5-0.7 4.1 0.5 0.1 0-0.2 0.5 0.9 1.3 1.6 0.3 3.1-0.4 0.6 0.2 1.7 0.8 0.5 0.4 0.3 0.5 0.1 0.7 0.3 0.8 0.5 0.6 0.4 0.2 0.3-0.1 0.3-0.1 0.4 0.3 0 0.3-0.2 0.9 0 0.4 0.3 0.7 0.7 0 0.8-0.2 0.6-0.4 1.3-0.1 1.3 0.6 1.2 1 1.7 2.2 0.1 0.5-0.4 0.8-1.7 1.3-0.4 0.6-0.2 1.8 1 1.1 1 0.8 0.2 1-0.4 1.2-0.3 1.5-0.1 1.5 0.2 1.2 0.2 1-0.6 1.8 0.3 1 0.6 0.3 1.8 0.2 0.7 0.6 0.7 1.7 0.4 0.5 1.8-0.3 0.4 0.5 0.3 0.9 0.4 0.8 2.7 1.8 1.1 1.2-0.2 2-0.5 0.7-0.7 0.4-0.6 0.5-0.3 1 0.2 1.2 0.4 1 0.3 1.1-0.3 1.1-0.6-1-0.9-0.5-5-0.7-0.9 0-1.5 0.7-1.9 1.4-1.7 1.6-1.1 1.5-1.2 0.9-1.2 0.7-4.1 1.3-0.4 0.7-0.1 0.9-0.8 1.3-0.4 1-0.5 0.4-0.6 0.1-1.9-0.5-0.5-0.4-0.3-0.6-1.9-4.3-0.3-1.3 0-1.2 0.4-1.2 0.8-1.1 0.6-0.3 0.6-0.1 0.4-0.2 0.4-0.7 0.1-0.6-0.1-0.8-0.2-1.3-0.4-1.3-0.6-1.1-0.8-0.8-1-0.7-4.6-1.9-0.9-0.1-1.6-0.3-2.1 0.3-1.8 1.5-1.4 2.1-1.4 1.7-2.6 0.4-0.8 0.9-0.6 0.2-0.4-0.3-1-1-0.5-0.3-1.1-0.3-1.2-0.1-4.9 0.3-1.1-0.1-1.2-0.5-0.9-0.7-0.4-0.2-0.6-0.1-0.6 0.1-1.2 0.5-0.6 0.1-0.8-0.4-2.2-1.8-1.9-1-0.6-0.5z" id="TR30" name="Hakkari">
+  </path>
+  <path d="M938 173.5l-0.8-0.6-1.8-0.5-8.5 2-3.7-0.5-3.5-1.1-4.7 0.6-4.4-0.7-0.3-0.9-0.3-0.9-3-0.7-4.3-2-1.4-1.9-1.1-2.3-1.5-1.1-1 0-1.6-0.7-0.6-0.5-1.5-0.3-3.2 1.3-3.1 2.1-1.6-0.6-0.7-0.7-0.7-2.3 0-1.5 0.2-2.9-1-3.5 1.8-2.1 0-2.4 2.5-1.2 5.9-0.8 6.2-2.3 2.2 1.2 4.4 1.3 5.2 2.9 5.7 0.9 0.7-0.2 1.7-1.2 1-0.3 0.5 0.2 0.6 0.6 0.4 0.1 0.5-0.1 0.9-0.3 1.4-0.1 2.8-0.8 1.6 0 1.8 0.5 2.6 1.6 4 2.3 2.7 2.4 1.2 1.4 0.6 0.9 0.2 0.9 0.2 0.5 0.4 0.4 0.7 0.6 0.1 0.6 0.1 0.7 0.1 0.3 0.7-0.4 1.7 2 0.9 0.6 0.2 0 0.5-0.1 0.3 0.1 0.2 0.2 0.3 0.5 2.9 3.8 0.7 1.3 0.5 0.7 0.5 2.4 0.5 0.7-3.8-2.8-0.9-0.8-2.9-1.3-0.6-0.7-1.3-2-0.7-0.5-1.2 0.4-5.1 4.1-0.2 0.7 0.3 2-0.1 0.8z" id="TR76" name="Iğdir">
+  </path>
+  <path d="M938 173.5l0 0.2-0.3 0.8-1.6 3.2-0.2 0.8-0.1 1 0.1 0.9 0.1 0.8 0 0.7-0.5 0.7-0.2 1.4 0.2 1.2-0.1 1.1-0.8 1.2-0.9 0.7-2.4 1.1-1.1 0.3-1.2-0.1-3.3-1.7-1.1-0.1-2.6 0.7-1.1 0.1-1-0.1-0.8 0-0.7 0.2-0.9 0.7-0.6 0.7 0.3 0.7 1.3 1.5-6.7 1.8-1.8-0.3-0.8-0.3-2.8-0.3-2.4-0.7-1.8-0.3-1.8 0.2-1.3 1-1.2 1.3-1.7-0.1-4.1-0.8-2.1-1.3-2.8-2.9-3.2-1.5-3.7-0.2-2.1 1.6-1.7 2.3-1.6 0.5-2.9 0.6-1.1 0.4-0.4 1.9 1.8 1 1.9 0.8 0.3 1.9-0.3 2.1-0.1 2.1-1.2 1.3-5.5 2.3-8.8 1.9-1.6 1.3-1.6 1-2.3 0.7-2 1.3-0.2-3.2 0.4-3 0.5-2.4-0.1-0.9-0.2-0.8 0.2-4-1.7-2.5-1.2-1.2-0.8-1.7-1.5-1.7-1.5-1.4-1.9-3.4-1.4-3.8 1.5-2.5 0.5-2.9-0.1-8.3 0.5-1.7 0.6-0.4-6.7-2.8-3.9-4.7 1.7-0.7 3.6 0.6 1.7-0.6 1-1.5 1.2-0.5 0.6-0.1 1.2 0.1 1.6-0.9 1.3-1.5 9.2 1.8 14.6-4.2 5.2 0.1 2.2 0.6 2.1-0.5 2.6 1.1 1 3.5-0.2 2.9 0 1.5 0.7 2.3 0.7 0.7 1.6 0.6 3.1-2.1 3.2-1.3 1.5 0.3 0.6 0.5 1.6 0.7 1 0 1.5 1.1 1.1 2.3 1.4 1.9 4.3 2 3 0.7 0.3 0.9 0.3 0.9 4.4 0.7 4.7-0.6 3.5 1.1 3.7 0.5 8.5-2 1.8 0.5 0.8 0.6z" id="TR04" name="Agri">
+  </path>
+  <path d="M887.1 289.6l-2.3 0.3-2.3 0.1-1.2-0.3-3.6-1.5-4.1-0.5-3.8 2-1.9-4.5 0.5-1.6 0.7-1.5 0.2-3.5 0.6-2.4 0.2-2.6-0.3-2.4 0.2-2.5-0.5-4.3-3.4-1.3-3.8-0.7-3.7 0.3-2.5-0.9-0.9-3.1 0.5-2.1-0.1-1.6-0.2-0.7-1.7-3.9-0.3-1.3 0.5-2.5 0.8-0.9 5.1-2.9 3-2.1 1-1.7 0.8-1.9 4.4-6.5 2.6-2.8 3.4-2.6 1.4-4.5-1.9-3-5.6-3.4-1.4-3.1-0.1-4.6 5.5-2.3 1.2-1.3 0.1-2.1 0.3-2.1-0.3-1.9-1.9-0.8-1.8-1 0.4-1.9 1.1-0.4 2.9-0.6 1.6-0.5 1.7-2.3 2.1-1.6 3.7 0.2 3.2 1.5 2.8 2.9 2.1 1.3 4.1 0.8 1.7 0.1 1.2-1.3 1.3-1 1.8-0.2 1.8 0.3 2.4 0.7 2.8 0.3 0.8 0.3 1.8 0.3 6.7-1.8 0.2 0.6 0.3 1.3 0.5 1.2 0 0.5-0.1 0.4 0 0.6 0.2 0.5 0.5 1.2 0.1 0.5-0.3 1.1 0 0.6 1.2 0.9 2.2 1.1 1.8 1.3 0.4 1.5-1 1.9-0.2 1 0.4 2.4-0.4 0.7-0.8 0.6-0.7 1.2 0.3 0.4 0.1 0.4 0.2 1 0.3 0.4 0.5 0.3 0.3 0.4 0.1 0.6-0.1 0.5 0.2 0.5 0.2 0.4 0.4 1.4 0.7 0.9 0.8 0.8 2.5 1.2 0.2 1.8-1.3 4.4-0.2 1.2 0.1 0.7 0.3 0.8 0.2 1.1-0.2 0.4-0.4 0.4-0.2 0.4 0.6 0.3 0.9 0.3 0.3 0.2 0.4 0.4 0.3 1 0 1.3-0.2 2.4 0.4 3.1 0 1-0.6 2.5 0 0.7 0.1 1.5 0 0.6-0.2 1 0.2 0.5 0.4 0.3 0.7 0.3 2.4 0.5 1.5-0.9 0.6-0.2 0.8 0.3 0.7 0.6 0.5 0.8 0.4 1 0 0.9-1 1.6-1.8 1.3-1.3 1.5 0.2 2.9-0.2 1.2-0.2 1.2-0.4 0.9-0.3 0.5-0.9 0.3-0.3 0.4-0.1 0.5 0.4 1.1-0.3 0.4-0.9 0.4-0.6 0.5-0.5 0.8-0.4 1.3-0.4 0.9-1.1 1.3-0.5 0.9-0.4 0.7-0.3 0.8 0 0.7 0.2 0.9 0 0.8-0.4 0.6-0.5 0.6 0 0.2-0.1 0-4.1-0.5-3.5 0.7-1.9 3.4-1.2 3.3-2.6 1.6-3.1 0.6-3 0-2-0.8-2-0.3-1.4 0.5-1.3 0.7-6.3 1.1-6.4 0z" id="TR65" name="Van">
+  </path>
+  <path d="M166.1 54.8l-2.2 3-0.1 0-8.3 0.9-8.2 1.1-5.2 1.2-4.6 1.4-2.3 3.4-1.7 3.5-2.7 2.1-3.1 0.8-2.6-1.7-2.1-2.8-2.7-1.8-5.5 0-7.7 0.6-7.2 1.6-1.4-2.9 2.3-4.8 0.7-4.6 1.9-2.9 1.1-6.2-0.6-6.1-1.5-6.1-1.2-7.3 0-0.1 0.6-0.5 0.5-0.3 0.5 0 0.5 0.1 0.4 0 0.5-0.5 0.5-0.2 0.9 0.2 0.4-0.1 0.6-0.7 0.3-0.8 0.5-0.6 0.6-0.3 1-0.6 1-2 1.1-0.6 0.1 0 0.8 0 0.9 0.3 0.8 0.5 0.7 0.6 0.6-0.1 1 0.1 1.2 0.3 0.2-0.1 0-0.2 0.2-0.3 1-1.4 0.6-0.5 1-0.1 1.7 0.3 1.5 1 1.3 1.2 2 3.2 1.1 1.2 1.1 1 3.5 2 0.7 0.6 1.2 1.6 0.6 0.4 0.8-0.3-0.7-0.3 0.1-0.1 0.3-0.2 0.2-0.1-0.2-0.1-0.1-0.1-0.1-0.1-0.1-0.1 1-0.4 0.5-0.3 0.4-0.5 0.3 0.2 0.3 0 0.2-0.3 0.1-0.6 3.7-1 1.7 0.1 2.5 1.4 0.6 0.2 0.7-0.1 0.6-0.2 0.1-0.4-0.7-0.4 0.1-0.7 0-0.8 0.1-0.7 0.2 0 0.2-0.1 0.2 0.1 0.2 0 0.9-0.1 0.4 0 1.2 0.3 1.2 0.6 0.7 0.2 2.3-0.2 0.7 0.2 1.7 0.4 0.7 3 0 0.7 0.2 0.2 0.3 0.4 0.2 0.5 0 0.4-0.5 0.3-0.5-0.1-0.8-0.4-0.8 0.1-0.6 0.3-0.4 0.9-0.2 1.6 0.3 1.7 0.7 1.1 0.9 1 0.7 1.2 0.9 2.8 0.6 0.9 0.8 0.8 0.4 0.4 0.3 0.7 0.1 0.1 0.1 0.2 0.1 0.4-0.1 0.2-0.3 0-0.2 0-0.1 0.4 0.4 1 0.6 1.2 0.8 1 1.4 0.8 0.7 0.9 1 1.6 1.2 1.2z" id="TR39" name="Kirklareli">
+  </path>
+  <path d="M101.2 27.1l0 0.1 1.2 7.3 1.5 6.1 0.6 6.1-1.1 6.2-1.9 2.9-0.7 4.6-2.3 4.8 1.4 2.9 0.6 1.1 0.3 8.8-0.7 3.8-2.3 3-1.5 3.8-0.8 4.4 0.3 5.1 1.8 3.9 1.2 4.1 0 0.2-0.3 3.7 0 0.3-3.1 0.5-1.2 0.5-0.6 0.2-3.2 0-1.3 0.4-3.6 2.2-1.4-0.9-0.8-0.3-0.7-0.1-0.7 0.3-0.7 0.4-0.8 0.3-1.2-0.7-0.8 0.1-2.6 0.7-8.8 0-1.2-0.2-0.7-0.4-0.4-1-0.3-1.1-0.4-1 0.3-0.9-0.1-1.4-0.5-1.4-0.7-0.9 0.4-0.1 0.1-0.2 1.8 0.2 1.5-0.7 1-1.3 0.4-1.6 0.8-1.2 2.5-2.2-0.3-0.7 0-0.4 0.2-0.2 0.4-0.2-0.1-0.1-0.2 0 0-0.1 0-0.3 0.4-0.1 0.2-0.2 0.1-0.3 0-0.6 0.2 0.5 0.1 0.3 0.3 0 0.3-0.4 0.3-0.5 0.4-1.3 0.3 0 0.2 0.4 0.2 0.3 0.3 0.2 0.4 0 0.7-0.2-0.1-0.4-0.2-0.4-0.2-0.3 0.6-0.6 1.4-0.6 0.6-0.5 0.5-0.7-0.1-0.2-0.5-0.2-0.5-0.6-0.1-0.6 0.1-0.4 0.4-0.2 0.7-0.1 0.4-0.4 0.4-0.7-0.1-0.7-1.2-0.7-0.5-0.6-0.6-1.4-0.1-1 0.8-1.6-0.4-0.3-0.7-0.2 0-0.5 0.9-1.4-0.6-1.1-0.1-1.1 0.2-1.2 0.5-1.4-0.7-1.1 0.5-0.5 3-0.3 0.8-0.4 1.3-1.2 1.3-0.8 0.3-0.3 0.1-0.3 0.2-0.2 0.5-0.1 2.4-2.6 0.5 0.7 0.9 0.5 1 0.2 0.9 0 0.6-0.7 0.4-1 0.3-1.4 0-1.3-0.2-1.3-0.8-3.1-0.2-2.3-0.3-1.1-0.5-0.9 0.3-0.7-0.2-1.6 0.2-0.8-0.1-0.3-0.1-0.5-0.1-0.4 0-0.5-0.9 1.4-0.5-0.5-2.1-1.2-2.7-2 0.4-0.8 0.2-0.9-0.8-0.2-0.8-0.4-1.9-0.4-1.2-1.2-0.9-0.3-1.2 0.1-0.5-0.7-0.3-1.2 0.1-1.4 0.7-1.6 2-1.7 4.9 0.2 2.2-0.7 0.7-0.8 0.4-1.2 0.2-1.2 0-0.4 0-0.4 0.1-0.4 0.2-0.5 0-0.4-0.1-0.2-0.6-0.4-0.1-0.2 0.2-0.4 0.3-0.3 0.4-0.3 1.3-1.5 0.8-0.5 0.9-0.1 4.4 0.7 0.9-0.1 0.5-0.3 1-1.1 0.6-0.1 0.5 0.2 0.8 0.8 0.6 0.1 0.4-0.2 0.4-0.4z" id="TR22" name="Edirne">
+  </path>
+  <path d="M846.7 114.1l5.5-1.1 5.7-0.6 0.9-4.5 0.7-7.5 1.1-4.8 5.7-3 7.8-3.3 7.7-3.3 4.8-2.7 3.1-1.1-0.2 1.5 0.3 2 0.8 1.8 0.9 0.8 2 0.3 2.1 1.1 1.9 1.5 1.4 1.9 0.6 1.2 0.2 1.2 0.1 1.3 0.3 1.4 0.4 1.3 2 3.1 0.5 1.2 0.1 1 0.3 4.4-0.2 0.5-1 1.8-0.2 0.3 0.3 1.5-2 2.3-0.6 1.3 0 1.5-0.3-0.2-0.2-0.1-0.2 0-0.3-0.1 0.2 0.2 0.1 0.2 0.1 0.5-1.1 0.1-1.1 0.7-1.6 1.9 0.2 0.9 1 1.1 1.9 1.6 0 0.5 0 0.1-0.7 2.4-0.4 0.7-0.3 1 0.4 1 1.3 1.2 2.1 2.8 0.7 1.5 0.1 0.2-0.9 0.6 0.5 1.1 1.5 1.9 0.3 0.7-0.5 0.8-2.1 0.4-0.7 0.6 0.6 1.8-6.2 2.3-5.9 0.8-2.5 1.2 0 2.4-1.8 2.1-2.6-1.1-2.1 0.5-2.2-0.6-5.2-0.1-14.6 4.2-9.2-1.8-1.4-2.3-1.1-2.5-1.2-1.9-1.9-0.8-1-0.3-0.8-0.6-0.6-1.3-0.8-1.1-1.4-1-1.5-0.5-4.1-0.7-1.1-1.3-1-1.7-1.7-2 1.5-3.3 6.9-2.4 3-1.7 1.5-1.2 1.6-1.1 2-0.9 1.9-1.2-1.1-6.2 0.7-2.2 0.3-2.1z" id="TR36" name="Kars">
+  </path>
+  <path d="M812.6 290.8l2.8 7.5 1.3 5.2-0.6 4-3.5 1.7-4.5 2.5-2 2.2 0.8 2.5 5.5 1.7 3 2.4 0.9 3.8-19.8 4.7-13.2 0.6-1-0.3-2.1-0.9-11.4-2.2-8.9 1.3-2.3 0.9-6.4 3.5-2.1 0.7-1.1 0-1.1 0.2-1 0.4-0.9 0.6-6.3 4.2-2.1-1.1-4.3-7.5 0.5-4.8-0.6-1.2-2.4-2.5-1.5-1.3-1.4-1.5-0.6-7 4.6-6 2.1-2 5.2-3.6 2.4-0.9 5.2-4.1 3.8-0.3 2.3-3 0.6-1.4 5.2-1.1 16.6 0.5 3-1.5 1.2 0 0.9 0.4 3.4 4.3 3.3 6.9 5.1 3.2 7.3-1.5 5.3-3.9 8.8-6.3z" id="TR47" name="Mardin">
+  </path>
+  <path d="M726.3 311.1l0.6 7 1.4 1.5 1.5 1.3 2.4 2.5 0.6 1.2-0.5 4.8 4.3 7.5 2.1 1.1-3.4 2.3-1.8 0.9-1.8 0.3-1.7 0.6-4.7 2.8-10.2 3.9-15.3 2.9-9.6 1.9-2.6 0.1-7.3-2.5-2.5 0.2-1 0.3-7.7 0.3-3.4-0.4-2.9-1.5-1.3-1.5-5.1-5.3-2.3-1.3-9-2.7-3.2-0.4-1.6 0.2-3.2 1.2-4.6 3 0-0.1-0.2-0.5-0.1-0.8 0.1-0.8 0.4-0.3 0.5-0.2-0.2-0.5-0.8-0.9-0.2-0.6-0.1-0.6 0-1.5-0.2-0.5-1.3-1.2-0.7-0.8-0.1-0.5 0-0.9 0.6-1.4 0.1-0.7-0.5-0.3-0.7 0.1-1.1 0.6-0.4 0.1-0.4-0.3-0.5-0.5-0.4-0.3-0.6 0.3-0.6-0.6-0.1-0.8 0.3-1.7 0.1-1.4-0.1-0.6-0.3-0.7-0.8-1.3-0.3-0.8-0.2-0.9 0.2-1 0.4-0.4 0.4 0.1 0.3 0.7 0.3 0 0-1.3-0.3-0.9-0.6-0.6-0.7-0.5 0.6-2.1 0.2-0.6 0.4-0.3 0.4-0.2 0.2-0.2 0.4-1.5 0.5-0.8 1.6-1.6 2.1-2.7 0.7-0.6 0.8 0 0.8 0.1 0.8-0.1 0.7 0.5 0.5 0 1.4-1 0.6 0.8 0.9 0.4 2.1 0.5 0.2 0.2 0.1 0.5 0.2 0.1 0.2-0.1 0.1-0.1 0.1-0.1 0.2-0.1 0.2-0.3-0.1-0.7 0.1-0.8 0.4-0.3 2.1 0.3 0.7-0.3 0.3-1.4 0.5 0 2.8-1 1.5 0.6 5.8-1 1-0.6 2.8-3.1 0.6-1 0.5-0.3 2.3-2.4 10.5-1.6-2.3-1.8-0.9-1 1-0.6 0.1 0.2 0.6 0.6 0.2 0.1 0.4-0.1 0.3-0.1 0.3-0.1 0.2-0.1 0.2-0.2 0.2-0.5 0.4-0.3 0.8 0.6 0.4 0 0.4-0.2 0.3-0.3-1.2-1.3-0.4-0.3 0.6-0.7 1-0.2 1.1-0.1 0.9-0.2-0.6-0.9 0.1-1.5-0.5-0.5-0.6 0.1-1.3 0.9-0.7 0.2 0.4-0.9 0.5-0.8 0.7-0.5 0.7-0.2 0.4 0 0.9 0.3 0.3 0.1 0.3-0.5 0.1-0.5-0.1-0.4-0.3-0.3 0.6-0.9 0.3-0.8-0.1-0.7-0.4-0.9 2.3-0.8 0.6-0.4 0.5-0.9 0.2-2 0.2-0.9 0.6-0.7 0.8-0.4 2.9-0.9 1.9-1.3 3.7 2 3.8 0.7 2.9 0.1 2.6 1.2 2.8 3 3.1 2.6 1.5 0.8 1.6 0.5 1.8 1.7 2.3 1 0.5-0.7 0.4-0.8 1.4 0.6 1.2 1.1 0.8 0.5 0.9 0.2 0.7 1.5-0.3 6.5 0.7 4.5 0.4 1.7 0.2 0.9 1.7 4.9 1.6 3.1 2.2 2.5z" id="TR63" name="Sanliurfa">
+  </path>
+  <path d="M608.6 352.8l-3.6 2.4-2-0.1-7.7-1.4-1.1 0.1-3 0.8-0.9-0.1-0.7-0.3-0.8 0-0.9 0.4-0.8 0.7-0.3 0.6-0.5 0.1-0.9-0.5-0.9-0.8-0.2-0.7 0.4-1.9 0-1.2-0.4-0.8-1.4-1.3-0.8-0.7-0.9-0.6-0.9-0.3-0.9-0.2-3-0.2-8.8-3.1 2.6-2.5 4-1.8 3.2-2.2 0.4-3.9 1.5-1.3 1.7 1 1.5 3.3 3.2 0.6 3.7 2.5 3.9 4 2 2.4 1.4-0.9 3.5 1.9 4.4 2.4 4 3.6z" id="TR79" name="Kilis">
+  </path>
+  <path d="M633.2 306.9l-0.8 0.1-0.8-0.1-0.8 0-0.7 0.6-2.1 2.7-1.6 1.6-0.5 0.8-0.4 1.5-0.2 0.2-0.4 0.2-0.4 0.3-0.2 0.6-0.6 2.1 0.7 0.5 0.6 0.6 0.3 0.9 0 1.3-0.3 0-0.3-0.7-0.4-0.1-0.4 0.4-0.2 1 0.2 0.9 0.3 0.8 0.8 1.3 0.3 0.7 0.1 0.6-0.1 1.4-0.3 1.7 0.1 0.8 0.6 0.6 0.6-0.3 0.4 0.3 0.5 0.5 0.4 0.3 0.4-0.1 1.1-0.6 0.7-0.1 0.5 0.3-0.1 0.7-0.6 1.4 0 0.9 0.1 0.5 0.7 0.8 1.3 1.2 0.2 0.5 0 1.5 0.1 0.6 0.2 0.6 0.8 0.9 0.2 0.5-0.5 0.2-0.4 0.3-0.1 0.8 0.1 0.8 0.2 0.5 0 0.1-0.8 0.5-1.4 0.4-7.6 3.5-7.8 1.7-2.9 1.2-3.4 2.2-4-3.6-4.4-2.4-3.5-1.9-1.4 0.9-2-2.4-3.9-4-3.7-2.5-3.2-0.6-1.5-3.3-1.7-1-1.5 1.3-0.4 3.9-3.2 2.2-4 1.8-2.6 2.5-0.3-0.5-0.8-0.1-0.6-0.5-0.4-1.2-0.8-0.8-3.8-1.7-3.1-3.1 1.1-2.2 1.8-1.7 3.3-4.2 2.6-5.1 1.8-2.8 2.2-2.5 5.7-2.6 2.3-3.1 2.3 1.5 1.3 5.3 3.7 1.2 4.3-4.6 2.6-1.3 6-1.1 6.3-2.2 3-0.4 3 0.1 2-1.4 0.6-2.7-0.3-1.7 0.1-1.8 5.2-1.1 5.2 0.1 5.6 2.1 3.7 3.3z" id="TR27" name="Gaziantep">
+  </path>
+  <path d="M557.8 335.8l3.1 3.1 3.8 1.7 0.8 0.8 0.4 1.2 0.6 0.5 0.8 0.1 0.3 0.5-0.5-0.1-0.4 0.1 0.2 1.4-0.6 1.2-0.7 1-0.6 1.2-0.2 1.3-0.1 1.1-0.1 1.2-0.6 1.4-0.6 2.5 0 2.6-0.2 2.6-1.4 2.2-0.3 0.9 0.2 1 0.9 3.2 0.2 0.5 0.4 0.3 0.7 0.3 0.2 0.2 0.3 0.4 0.1 0.4 0.1 0.4-0.1 0.5-0.3 0.9-0.2 0.5-0.2 0.1 0.4 0.4 1.6 0.2 0.8 0.3 0.5 0.6 0 0.1 0.5 0.8 0.3 1 0.2 0.9 0 1.3-0.2 0.5-3.4 0.6-0.9 0-3.6-0.6-0.9 0.2-0.5 0.2-0.2 0.3 0 0.5-0.3 0.3-0.4 0.2-0.2 0-0.3-0.1-1.3-0.2-0.7-0.2-0.6-0.4-0.6-0.7-0.5 0.5 0.7 0.8-0.1 0.5-0.4 0.4-0.3 0.5 0 0.8-0.2 8.5 0.1 1.7-1 0.3-1.9-0.7-0.9 0.4-0.4 2.1-0.8 0.1-1.1-0.3-1.5 0.6-1.1 1.7-0.3 4.1-0.5 1.7-0.1 0.1-0.8 0.1-2.8-2-1.4-0.7-1.5 0-0.7-0.2-0.5-0.5-0.1-0.7 0.1-0.7 0-0.8-0.6-0.7-0.9 0.2-1 0.3-0.9 0.2-0.5-0.1 0-0.1 0.6-0.8 2-3.6 0.5-0.4 0-1.1-1.3-4-3.4-5.6-0.6-0.8-0.6-1-0.5-1.8-0.7-0.8-0.8-0.7-0.5-0.7-0.6-1.4 0.1-0.9 1.3-1.9 0.4-0.5 0.5-0.3 0.5-0.2 0.5 0 0.3-0.2 0.5-1.5 0.4-0.4 0.8-0.4 0.5-0.4 0.2-0.5 0.3-1.3 0.5-0.3 0.3-0.3 0.3-0.3 1.9-0.7 0.4-0.2 2.2-2.8 0.4-0.6 0.5-0.1 5.1-3.2 0.7-0.2 0.5-0.5 0.6-1 0.5-1.2 0.2-0.9 0-0.8-0.2-0.6-0.3-0.5-0.2-0.6 0-0.4 0-3.7-0.1-1-0.5-1-2.8-4-1.6-1.6-1.8-1.3-1.8-0.5-1.7 0.7-1.6 1.4-0.9 1.1-0.7-1.2 0-2.5 3.9-4.5 0.9-0.5 1 0.2 1 0.4 2.1-0.4 2 0.6 1.9 0 2.3-0.6 2.1 0.7 1.6 1.7 1.8 1.1 2.4 0.1 2.4-0.3z" id="TR31" name="Hatay">
+  </path>
+  <path d="M163.8 57.8l0.1 0 2.2-3 1.4 1.3 7.2 4.6 10.3 4.4 14.6 7 4.7 1.1 0.2 0.1 0.1 0.1 0.2 0.2 0.3 0 0.3-0.1 0.3-0.6 0.4-0.1 1.1 0.1 1.2 0.5 0.7 0.7-0.4 1.6-0.7 1.1-0.8 1.1-0.8 0.5-0.6 0.2 0.2 0.4 0.4 0.5 0.2 0.5 0.3 0.4 0.1 0.1 0.3 0.2-0.1 0.4-0.2 0.3-0.1 0-0.2 1.2-0.3 1.2-0.5 0.9-0.5 0.8-0.4 0.3-0.8 0.3-0.4 0.3-0.4 0.6-0.1 0.3 0.1 0.3 0 0.2 0.2 0.3-0.1 0.3-0.2 0.4-0.2 0-1.1-0.1-0.4-0.3-0.2-0.1-0.3 0.2-0.4 0.6-0.2 0.1-0.5 0.1-0.9 0.6-1.9 0.4-0.4 0.2-0.3 0.2-0.2 0.3-0.3 0.2-0.5 0.1-1.2 0-0.6-0.2-0.2-0.4-0.5-0.5-1.2 0-5.7 0.7-1.4-0.6 0.4-2-0.6-0.6-0.3-0.2-0.4-0.1 0.3-1.4-0.5-1.3-1-0.8-1.1-0.3 0.2 0.9 1.1 1 0.3 1.1 0 0.6-0.1 0.9-0.3 0.9-0.6 0.6-1.3-0.2-2.5-2.5-1.2-0.7-1.6-0.3-3.3-1.2-1.6-0.2-1.6 0-0.4-0.2-0.5-0.6-0.4-0.1-1.8 0.4-0.9 0-0.3-0.2-0.5-3.5-0.7-4.8 0.7-3.8 1.4-5.2-0.5-4.2-1.3-4.5z m52.2 38.9l-0.6-0.4-1 0.2-0.9-0.9-2.7-1.3-1-0.8-1-1.2-0.9-0.8-2.7-1.5 0.2-0.1 0.1 0 0-0.1 0.1-0.2-0.6-0.3-0.2-0.6-0.2-0.9-0.3-0.8 0.8-0.5 1-1.1 0.8-1.3 0.6-2.4 0.6-0.9 0.1-0.8-1-0.7 1.1-1.7 1.8-2 1.9-1.4 1.4 0.3 0.3 0 0.5-0.7 0.7-0.1 8.9 1.7 9.5 2.2 12.6 1.9-1 0.5 0.5 1.9 0.2 2-1.4 3.2-2.5 1.4-3.1 1.2-2.7 1.9-0.5 1.5-0.8 1.5-1.7 0.2-1.4-1.2-1.4-3.1-2.3-1.9-2.5-0.2-2.1 1.5-2 2-1.1 0.6-2.5 2.1-1.6 2.1z" id="TR34" name="Istanbul">
+  </path>
+  <path d="M99.9 68.1l7.2-1.6 7.7-0.6 5.5 0 2.7 1.8 2.1 2.8 2.6 1.7 3.1-0.8 2.7-2.1 1.7-3.5 2.3-3.4 4.6-1.4 5.2-1.2 8.2-1.1 8.3-0.9 1.3 4.5 0.5 4.2-1.4 5.2-0.7 3.8 0.7 4.8 0.5 3.5-0.4-0.2-2.3 0.8-0.4 0.3-0.4 0-2.6 1-0.7 0.2-0.9 0.5-0.7 0.5-0.5 0.5-1.1 1.8-0.3 0.8 0.1 0.5-0.9 0.2-3.8-0.4-0.7-0.5-0.7-0.6-0.8-0.4-1.8-0.6-1.8-0.1-10.2 1.5-1.4 0.9-1.1 2.1-1.2 5-1 1.9-4.5 4.4-2 3.6-4.3 3.2-0.2 0.3-0.5 0.7-0.2 0.3-0.5 0.1-1.2 0.2-1.3 0.9-2.2-0.1-1 0.1-0.8 0.7-1.4 2-0.6 0.4-1.2 0.1-1.5-4.6 0-5-6.9-0.7-1.2-4.1-1.8-3.9-0.3-5.1 0.8-4.4 1.5-3.8 2.3-3 0.7-3.8-0.3-8.8-0.6-1.1z" id="TR59" name="Tekirdag">
+  </path>
+  <path d="M98.5 110.3l0-0.3 0.3-3.7 0-0.2 6.9 0.7 0 5 1.5 4.6-0.6 0.1-1.9 0.6-2.7 1.7-0.7 0.7-0.9 0.6-2.9 0.4-0.9 0.5-1.5 1.4-0.7 0.3-0.5 0.3-0.4 1.9-0.5 0.8-1.6 0.8-0.3 0.5-0.1 1-0.3 1-0.7 0.9-2.6 2.4-0.3 0.2-1.4 0.3-0.6 0.6-1 1-0.1 0.2-0.2 0.3-1.2 1.5-0.9 0.7-1.1 0.6-1.1 0.6-1 0.1-0.6 0.6 0.1 1.1 0.6 1.2 0.7 0.5-2.3 2.2-0.7 0.5-1.9 1.1-1.4 1.4-0.6 0.3-2.5 0.9-0.5 0.1-0.5-0.4 0.1-0.7 0.4-0.7 0.3-0.4 0.8-0.6 0.5-1.3 0.4-1.3 0.2-0.6 2.2-3 0.6-2.2-0.3-1.7-0.9-1.4-1.4-1.1 0.5-0.4 0.2-0.4-0.3-0.3-0.6-0.1-0.2-0.3 0.4-0.6 0.7-0.6 0.3-0.1 0.5-0.5 2.5-0.9 0.9 0 0.7-1.3 2.4-1.5 2.2-1.9 2.8-1 2.1-1.8 1.4-0.9 1.4-0.7 1.3-0.3 2.3 0.3 0.6-0.3 0.7-0.7 1-1.6 0.6-0.7 1.2 0.5 1.5-0.5 1.3-1.1 0.6-1.3-1.4-3.1-0.4-0.6-0.5 0.1z m-5.4 68.8l-10 1.9-1 0.4-0.5 0.5-0.5 0-2.1 1.2-0.4 0.3-0.5 0-2.5-0.5-0.5 0.1-0.7 0.3-0.5 0.1-0.4 0.5-0.1 0.2-0.1 0.3-0.3-0.2-0.5-0.4-3.8 1-1.9 0-1.8-1-0.2-1.3 1.2-3.2 0.7-3.1 1.8-1.7 0.4-1.4 0.3-3.4-0.2-0.7-0.9-1.7-0.2-0.8 0.1-0.6 0.2-0.2 0.2-0.1 0.2-0.4 0-1.4 0.2-1.7-0.2-0.5-0.7-0.2 0.3-0.7 0.7-3.1 0-0.3-0.3-1.3 0-0.5 0.1-0.6 0.4-0.8 0.1-0.5 0.2-0.6 1-1.7 0.4-0.5 2.6 0.9 0.7-0.5 1.6-0.7 0.5-0.3 2-2.1 0.4-0.7 0.2-0.5 0-0.8 0.2-0.4 0-0.2 0-0.3 0-0.2 0.1-0.1 0.6 0 0.2-0.1 0.2-0.1 0.3-0.8 0.2-1.2 0-1.1-0.3-1 0.3-0.9 0.2-0.4 0.3 0 0.7 0 0.6-0.1 1.2-0.6 1.6-0.5 0.9-0.7 2.1-2.8 0.4-0.3 0.5-0.1 0.6-0.4 0.6-0.5 5.1-6.2 1-0.8 1.9-0.1 4.1 0.3 1.7-0.4 0.5 0.2 1.2 0.7 2.7 0.2 1.1-0.2 1.3-1.1 1.2-1.5 1.4-1.2 2.2-0.1 1.6 0.4 1.9 0 1-0.2 1.6-1 0.8-0.1 0.7 0.7 0.5 0.9 0.7 1.9-0.6 0.4-0.3 0-0.3-0.3 0 0.1-0.4 0.2 2.1 2.3 2.6 1.7 2.8 1.3 3.4 0.8 1.3 0 0.5-0.1 0.5-0.3 0.2 0.5-0.5 2.8-2.3 1.3-3.3 3.5-0.8 0.3-0.5 0.4 0.9 1.9 1.9 0.8 0.8 0.1 0.2 0.4-0.3 1.2-0.6 2.1-0.2 1.6-0.5 1.4-0.4 0.5-0.5 1 0.9 1.4 0.8 0.6-0.3 2.5-0.8 2.6-1 2.3-1.9 1.4-2 0.9-1.9 1.3-2 0.8-3.5-1.1-3.5-0.6-1.3 0.7-1.5-0.2-2.2 0-2 1.6-3.5 1.5-1.7 1.5-2.1 0.6-4.3-0.5-1.9 0.4-1.5 4.9 0.1 4.9z m-28.8-17.7l0.8-0.4 0.3 0.6-0.1 2.2-0.3 0.9-0.7-0.1-1.6-1.1-1.4-0.6-0.6-0.5-0.3-0.8 0.4-0.5 0.8-0.1 1.7 0 0.3 0 0.3 0 0.2 0.1 0.2 0.3z m-2.3-20.4l0 1.3-1 0.6-1.1 0.4-3.2 0.5-2.1 0.9-4.3 0.6-0.9 0-1.2-0.4-0.6-0.3-0.2-0.4-1.9-0.7 0-0.3 1-1.8 1.6-1.6 1.9-1.3 3.2-0.6 4.1-1.5 0.6-0.1 0.6 0.1 0.3 0.3 0.3 0.4 0.3 0.4 0.7 0.1 0 0.5-0.1 0.5-0.1 0.8 0 0.8 0.2 0.4-0.4 1 0.5 0.3 0.8-0.3 0.7-0.6 0.3 0z" id="TR17" name="Çanakkale">
+  </path>
+  <path d="M783.2 69.9l0.1 0.2 1.3 3.3 0.4 2.5 0.9 2.1 0.9 0.9 0.9 0.6 0.6 1.1 0.5 1.1 1.9 0.9 1.4 1.6-1.3 2.9-2.6 1.7-0.7 1.3-0.4 1.3-1 0.9-1.1 0.6-4.5 5.3-0.7 2.5-3.6 2.1-5.1 4.4-2 0.7-2.1 0-1.7 0.7-1.4 3.6-2.9 0.8-1.9 0.2-1.9 0.6-7.7 3.8-0.7-3.9 0.6-4.3-3-7.6-0.5-4.4-1.2-4.2-1.7-3.9 5.3-3.6 1.7 0.8 1.4 0.1 1.3-0.4 1.5-0.9 1.8-1.6 0.6-0.1 1.5-0.2 0.7-0.3 0.6-0.4 2.8-3.8 3.4-2.5 0.5-0.2 0.7 0.2 2.1 0.7 1.2-0.2 1.8-1.3 0.7-0.3 1-0.1 1.1-0.4 1.1-0.5 0.9-0.7 1.8-2 1-0.7 1.2-0.3 1.3 0 0.8-0.3 0.4-0.4z" id="TR53" name="Rize">
+  </path>
+  <path d="M743 89.3l1.7 3.9 1.2 4.2 0.5 4.4 3 7.6-0.6 4.3 0.7 3.9-0.9 0.2-1.9 0.6-4.9 0-2.4 0.4-2.3 0.8-2.1 0-3.9-1.3-4.1-0.1-1.9-1.1-2.9-3.3-1.5-0.5-0.3 0.2-0.6 0.6 0.3 1.5-0.7 0.8-1 0.1-2.3-3.9-3.3-2.2-1.4 1.1-0.6 2.6-0.7 0.8-1 0.2-2.8-0.3-11.1-4.5-3.2-3.3-0.7-3.7-2-1.2-0.8 1.1-1 0.9-1-0.1-0.9-0.7-0.8-2.4-0.4-5.8 0.1-3.1 1.3-7.6 0.4-0.4 0.6-0.1 1.5 0.1 0.9 0.3 1.5 1.3 1.1 0.1 0.8-0.2 1.2-0.9 1-0.1 0.6-0.2 2.5-1.6 0.3-0.2 0.2-0.3 0.2-0.2 0.6-0.2 3 0.8 0.7 0.6 1.2 1.7 2.8 2.4 1.8 1.1 1.9 0.4 0.9-0.4 1-0.4 1-0.2 1.2 1 0.6 0 1 0 0.4 0.1 2.9 2.3 0.8 0.4 0.9 0.2 0.8-0.6 3-1 1.1-0.2 2.8 2.6 1.3 0.9 2 0.4 0.8-0.1 1.4-0.6 1.1-0.3 1.7-0.6 1.1-0.8 2.2-0.6 2.4-1.6z" id="TR61" name="Trabzon">
+  </path>
+  <path d="M685.8 84.4l-1.3 7.6-0.1 3.1 0.4 5.8 0.8 2.4-5.7 0.7-0.3 0.7-0.2 0.9-0.9 0.5-1.2 0.3-1.4 1.2-1.5 1-0.6 1.6 0.6 1.9-0.9 1.7-1.4 1.5-0.5 0.7-0.1 0.5-0.3 2.8 0.1 2.2 1.3 1.6 5.6 1.4 1.3 1.1 1.3 1.3 1.1 0.3-0.3 2.3-1.4 1.2-4.8 2.6-1 1.3-0.1 2.1 0.2 2.1-0.2 2.2 0.4 2.2 1.3 1.7-0.4 2-1.9 0.9-4.2 0.3-2-0.1-4.8-2.4-5-1.6-4.8 1.2-3-1.8-2.9-2.2-2.7-1.4-1.7-2.6 0.1-3.5-3.9-14.9-4.5-5.1 0.2-1.7 0.6-1.2 0.2-2.1-0.2-2.1 0.2-2.1-0.2-2.1-0.8-1.8 0-2 0.8-1.5 1-1.2 0.7-1.9-0.1-2.2 0-0.2 2.3 0.3 1.9 0.7 1 0 2.1-0.6 0.9 0.2 2.1 1.9 1 0 1.8-0.6 1.8 0.5 1.2 0.2 0.5-0.5 3.6-0.2 0.7-0.5 1.8-1.7 0.6-0.4 1.5-0.5 0.6 0.1 0.3 0.2 0.8 1.1 0.3 0.4 0.5-0.3 0.9 0 0.5-0.1 0.3-0.3 0.4-0.4 0.5-0.4 0.6-0.2 0.9-1.2 0.2-0.3 0.2-0.2 1.1-0.4 3.3-0.7 0.8-0.5 0.7-0.7 0.9-0.3 5.5 0 3.8-0.9 0.4-0.3 0.8-0.6z" id="TR28" name="Giresun">
+  </path>
+  <path d="M636.7 91.6l0 0.2 0.1 2.2-0.7 1.9-1 1.2-0.8 1.5 0 2 0.8 1.8 0.2 2.1-0.2 2.1 0.2 2.1-0.2 2.1-0.6 1.2-0.2 1.7 4.5 5.1-1.4 1.2-1.6 0.8-2.2 0.2-1.9 0.4-0.5 0.8-0.1 1.8 0.5 0.7-0.2 1.1-1 0.6-4-0.2-1.7 1.3-1.4 1.9-1.4 1.1-1.7 0.2-3.6-2.9-2.6-5.1-0.9-3.8-1.6-3-6.4-0.4-10.9-7.6-3.1-0.3-3.3 0.5-3.4-0.3-3.1-1.3-2.5-1.5-3.9-1.4-2.7-1.6-2.1-0.5-0.6-0.4-0.5-1.9 0.8-1.6 1-0.3 0.9-0.5 2.1-0.2 1.9-0.6 1.7-1 0.7-0.6 1.9-2.1 3.8-2.1 2-3.9 2.7-2.8 2.5-3.5 0-0.3 5.3-0.1 1.7 0.5 1.1 1 0.5 0.3 1 0.3 1.2 0.1 0.8 0.3 1.1 1.3 0.8 0.6 2 0.7 0.2 0.3 1.1 1.2 0.9 0.4 1.9-0.2 0.8 0.2 0.3-0.3 0.6-0.3 0.4-0.3 0.3-0.5 0.6-1.6 0.6-1.1 0.7-1 0.8-0.8 0.9-0.6 0.4 1 0.8 0.6 0.9 0 0.8-0.7 0.3 0.4 1.2-0.2 0.1 3.9 0.8 1.1 2.5 1.2 0.6 0.5 0.5 0.7 0.8 1.4 1.9-0.8 2.2 0.3 5.8 2 0.5 0.1z" id="TR52" name="Ordu">
+  </path>
+  <path d="M591 79.7l0 0.3-2.5 3.5-2.7 2.8-2 3.9-3.8 2.1-1.9 2.1-0.7 0.6-1.7 1-1.9 0.6-2.1 0.2-0.9 0.5-1 0.3-0.8-1.6-1.7-1.1-2.5-0.1-0.3-0.2-0.3 0.4-1.6 0.8-5.2 1.3-5.1-3.7-0.8-1.4-0.6-1.4-1.3-1.5-1.7-0.6-1.9 1.2-0.9 2.9-1.4 2.5-2.2 1.5-1.7 1.4-2 0.5-3.7-1.8-6.3-0.1-1.8-0.3-3.6 0.2-1.6-0.4-1.6-2.8-6.9-5.3-1.6-0.9-2.9 0.5-14.7-4.2-1.8-0.4-3.7 0.4-0.7-2.3-0.3-2.5-0.6-2.3-2.5-4.4 0.8-0.6 1.1-0.5 0.7-0.8-0.4-1.1 0.5-0.5 0.4-0.3 1.2-0.1 0.6-0.2 1.6-1.5 2.5-1 1.2-0.7 0.5-0.9 0.5 0.5 0.4 0.9 0.3 1.2 0.1 1.1 0.3 0.6 0.8 0.5 1.5 0.8-0.5 0.8 0.5 0.3 2.1 0.3 0.4 0.2 0.8 0.9 1.5 0.8 2.1 0.3 2-0.4 1.5-1 0.9-0.4 2.5 0.6 0.9-0.7-0.4-3.8-0.3-1.8-0.6-1.3-0.3-1.5 0.2-1.9-0.1-1.8-0.8-3.1 0.2-3.2 1.9-4.2 1.4 0.4 2.2 0.3 2.1-0.2 1-0.4 1.8-1.1 2.9-0.5 5-2.2 1.2-0.2 1.1-0.3 1.9-1.6 1.1-0.3 0 0.5-0.2 0.4-0.3 0.3-0.4 0.4-0.5 0.2 0.1 0.9-0.9 2 0.2 1.1 0.4 0 0.1-1.6 0.4-1.4 0.6-1.1 0.7-0.8 0.5-0.4 0.3-0.1 2.8 2.7 0-0.9 0.4 0 3.5 4.7 0.7 1.9 0 2.5-0.2 0.7-0.4 1 0 0.3-0.1 2.1 0.2 1 0.5 1.1 2.1 2.6 1.2 0.9 1.6 3 0.7 0.6 2.4 1.3 1.4 0.3 0.2 0.3 0.2 0.5 0 0.7 0.1 0.7 0.4 0.3 0.6 0.2 0.5 0.3 0.3 0.3 0.4 0.7 0.3 0.3 0.5 0.1 0.8 0.2 0.5 0.3 0.8 0.4 1.2-0.3 2-1.1 2.5-2.3 0.4-0.6 0.2-0.6 0.7-1.1 0.1-0.4 0.1-0.2 0.3-1.3-0.1-0.1 0.7-0.5 0.6 0 0.8 0.3 1 0.2 4.1 0 3.8 1 7 3.5 1.4 1.3 0.8 2 0.1 2.8 0.3 1.1 0.8 0.4 1 0.3 1.8 1.1 0.9 0.4 0.8 0z" id="TR55" name="Samsun">
+  </path>
+  <path d="M512.6 48.4l-1.9 4.2-0.2 3.2 0.8 3.1 0.1 1.8-0.2 1.9 0.3 1.5 0.6 1.3 0.3 1.8 0.4 3.8-0.9 0.7-2.5-0.6-0.9 0.4-1.5 1-2 0.4-2.1-0.3-1.5-0.8-0.8-0.9-0.4-0.2-2.1-0.3-0.5-0.3 0.5-0.8-1.5-0.8-0.8-0.5-0.3-0.6-0.1-1.1-0.3-1.2-0.4-0.9-0.5-0.5-0.5 0.9-1.2 0.7-2.5 1-1.6 1.5-0.6 0.2-1.2 0.1-0.4 0.3-0.5 0.5 0.4 1.1-0.7 0.8-1.1 0.5-0.8 0.6-0.1 0.4-0.1 1.1-0.1 0.5-0.2 0.3-0.9 0.8-1 1.2-5.4-1.7-0.8-0.6-0.5-0.9-1.2-0.9-1.4-0.3-1.6 0.4-1.6-0.3-0.8-0.9-1-0.2-1.8 0.1-1.2-1.6 0.3-8.3-0.5-1.2-0.3-1.2 0.5-2.4 0.9-2.2 1.4-1.4 1.5-1 1.7-4.3-2.7-3.5-3.1-0.9-5.8-0.3-2.9-0.8-2-0.3-1.7 0.1-3.1-1.2 0.1-2.1 2.4-2.9 1.3-3.7-0.2-3.6 5.5 0.7 5.4-1.6 1.8-0.1 0.7 0.2 1.4 0.7 1.6 0.6 6.3 0.4 2.5-0.3 2.5-0.8 0.8-0.4 1.7-1.4 1.8-1.1 1.4-1.8 1.1-2.1 0.3-1.9 0.6 0.2 1.4 0.3 0.6 0.4 0.1-0.4 0.2-0.1 0.3 0 0.4 0 0.3 0.8 0.5 0.5 0.4 0.4-0.3 0.5 0 0.4 1.8 1.4 1.1 0.5 1.4-0.1 0.5-0.3 0.8-0.8 0.5-0.2 0.7 0.1 0.4 0.3 1 0.9 0 0.4-2.5-0.3-1.2 0.2-1 0.8-0.5 0.9-0.4 1.4-0.2 1.5-0.1 1.2 0.3 1 1.3 2.4 1.4 1.9 2.6 2.1 0 0.5-0.7 0 0.3 0.8 0.5 1 0.6 0.9 1.4 0.7 1.4 1.7 0.7 0.6 2.8 1.1 2.1 0.4 0.8 0.5 1.5 1.4 1.7 1 0.7 0.3z" id="TR57" name="Sinop">
+  </path>
+  <path d="M451.6 28.1l0.2 3.6-1.3 3.7-2.4 2.9-0.1 2.1 3.1 1.2 1.7-0.1 2 0.3 2.9 0.8 5.8 0.3 3.1 0.9 2.7 3.5-1.7 4.3-1.5 1-1.4 1.4-0.9 2.2-0.5 2.4 0.3 1.2 0.5 1.2-0.3 8.3-2.5 0.6-1.7 2.4-1.3 3.4-1.1 1.3-2.2 2-1.7 4.2-1.6 2-0.5 1.2 0.9 2.4 1 0.4 1.6 1.7-1.2 3.1-6.7 2.8-4.2 0.9-1.9-0.1-2-0.4-1.6-1.2-1.5-1.4-2.8-1-1.7-3 0.5-1.9 1.2-1.4 1.5-2-0.5-2.5-0.7-0.4-1.6 0.6-7.7 4.1-3.7 0.7-5 3-1.8 0.6-2.2-0.7-1.8-2.1-4.3-2.9-6.1-0.6-0.7-0.6-1.1-1.4-0.4-0.8-1-1.5-2.5-1.1-2.7-0.4-0.9-6.8 0.4-2.1 2.2-3 2.5-2.5 4.6-0.9-1.3-3.1-1.3-5.6-3.5-2.6-3.5 1.2-2.9 0.4-1.6-1.8-0.4-4.5 3-2.2-1.7-4.7-1.3-2.8-0.5-3.8 1.4-0.4 0.8-0.5 0.5 0.3 3.4-0.8 1.7-0.8 2.1-1.5 7.5-2.5 7.6-4 1.7-0.1 3.5 0.6 5 0 1.1 0.2 2.4 0.9 10.1 1 0.9-0.3 1.3 0.5 6.2-0.5 10.1 1.5z" id="TR37" name="Kastamonu">
+  </path>
+  <path d="M384.3 34.5l0.5 3.8 1.3 2.8 1.7 4.7-3 2.2 0.4 4.5-4.5 4.3-2.7 0.8-2.1 4.6-5.7 4.8-5 1.3-5.2-0.2 1-5.4-1.8-4.4-0.9-3.3-2.9-1.3-2.7-2.7 1.4-0.8 0.7-1.6 3.1-3.5 0.3-0.3 0.7-1.4 1.6-0.5 2.6-0.1 0.1-0.4 0.4-0.2 0.5-0.3 0-0.4 0.2-0.3 0.2-0.1 0.3 0.1 0.4 0.6 0.2 0.1 0.8-0.4 1-1.2 0.7-0.6 3.3-1.7 0.6-0.4 0.6-0.3 0.7-0.1 0.7 0.3 0.6-0.9 1.1-0.8 1.2-0.3 1.2 0.5 0.7 0 2.9-1.1 0.7-0.4 0.7 0.1 1.4-0.1z" id="TR74" name="Bartın">
+  </path>
+  <path d="M352.7 51l2.7 2.7 2.9 1.3 0.9 3.3 1.8 4.4-1 5.4-2.5 3.5-1.7 2.1-0.8 3.3-1.5 5.1 0 5.6-10.2-0.3-3-0.8-3.5-0.3-11.5-1.1-8.2-4-1.8-1.8 1.6-1.5 0.6-0.9 0.4-0.8 0.2-1 0.1-1.4 0.1-0.5 0.4-1.3 0.1-0.8-0.2-0.3-0.9-0.6-0.2-0.5 0.5-0.8 1.1-0.4 2.2-0.2 0.2-0.2 0.8-1.2 0.2-0.3 0.5-0.1 7.2-2.8 10.1-6.8 5.8-2.8 1.7-1.4 0.4-0.3 4.5-1.5z" id="TR67" name="Zinguldak">
+  </path>
+  <path d="M315.3 79.4l1.8 1.8 8.2 4 11.5 1.1-0.8 5.5-2.3 2.7-4.4 1.1-6.1 1-2.3 1.8-0.2 3.3-1.8 4.5-3.6 2.8-4.6 0.5-5.4-2.3-7.7 0.3-3.9-1.4 1-2-0.9-1.4-0.5-1.7 0.7-1.7-0.2-1.9-0.8-1.7-0.3-1.9 1.6-3.7 2.8-2.6-0.1-1.3-0.3-1.9 0.1-0.6 6.4-0.1 1.2-0.7 0.4-0.2 0.6 0.1 1 0.3 0.5 0 2-0.4 0.3 0.1 0.4 0.3 0.3 0 0.3-0.1 0.1-0.2 0.1-0.3 0.3-0.2 2-0.8 1.5-1 1.1-1.1z" id="TR81" name="Düzce">
+  </path>
+  <path d="M296.8 83.7l-0.1 0.6 0.3 1.9 0.1 1.3-2.8 2.6-1.6 3.7 0.3 1.9 0.8 1.7 0.2 1.9-0.7 1.7 0.5 1.7 0.9 1.4-1 2-3 2.3 0.1 2.1 0.4 1.9-0.6 1.9-3.1 1.5-3.3-0.2-1.9 2.9-1.3 3.9-0.8 0.4-0.6 0.7 0.3 1.6 1 1.2 1.1 2.2-0.9 2.3-2.5-0.6-3.5 0.1-0.8-0.7-1.2-1.8-1.5-0.9-1.8 0-1.7-0.5-2.1 0.2-6.6 1.7-4.2-1.3-1.7-1.9-1.9-1.6-1.7-2.5-1.3-2.8-0.5-1.3-0.2-1.5 3.3-0.3 1.5-0.5 1.5-0.9 3.1-0.7 2.8-1.9 1.9-3.9 1.9-9.3 3.1-3.3-0.6-0.4-0.6-0.2-0.4-1.4 0.9-0.5 1.8 0.4 1.6 0.7 2.6-0.1 0.9-0.1 0.3-2.2 1.1-1.9-0.3-2.1-3.4-0.6-0.9-3.2 1.5-3.9 0.3-0.9 12.8 3.1 1.6 1.4 0.7 0.4 4.1 0.8 5.8-0.2z" id="TR54" name="Sakarya">
+  </path>
+  <path d="M216 96.7l1.6-2.1 2.5-2.1 1.1-0.6 2-2 2.1-1.5 2.5 0.2 2.3 1.9 1.4 3.1 1.4 1.2 1.7-0.2 0.8-1.5 0.5-1.5 2.7-1.9 3.1-1.2 2.5-1.4 1.4-3.2-0.2-2-0.5-1.9 1-0.5 12 0.4 1.3-0.2 0.7-0.3 1.2-0.8 0.6-0.2 0.4-0.4 0.4-0.7 0.3-0.5 0.4 0.3 0.5-0.5 0.6-1 0.5-0.3 0.6 0.5 2 0.5 1.6 1.2 2.8 0.7-0.3 0.9-1.5 3.9 0.9 3.2 3.4 0.6 0.3 2.1-1.1 1.9-0.3 2.2-0.9 0.1-2.6 0.1-1.6-0.7-1.8-0.4-0.9 0.5 0.4 1.4 0.6 0.2 0.6 0.4-3.1 3.3-1.9 9.3-1.9 3.9-2.8 1.9-3.1 0.7-1.5 0.9-1.5 0.5-3.3 0.3-6.5-2.3-3.3 0.6-8.8 3.3-2.7 0.2-2.7-0.9 0.4-2.4 0-5.6 0.4-0.3 0.6-0.2 0.5-0.3 0.2-0.5 0.2-0.4 0.5-0.4 0.5-0.2 0.5-0.1 0.5 0.1 0.8 0.4 0.7 0.7 0.3 1.2 0.5 0 9.2-2.1 5.4-0.3 1.7 0.8 1 0 0.7-1.1-0.5-1.5-1.8-0.3-3.9 0.5-0.3 0.1-0.3 0.1-0.4 0.2-0.6 0-0.5-0.3-1-0.8-0.3-0.2-0.7-0.2-1.7-0.6-1-0.1-11.2 0.5-0.9 0.3-0.8 0.6-0.8 0.3-0.9-0.4-0.4-0.5-0.2-0.6-0.3-0.4-0.5-0.2 0.2-0.1 0.1-0.2 0.2-0.1 0.2-0.1-0.2-0.6-0.3-0.4-0.3-0.4-0.5-0.2-0.2 0.3-0.5-0.3-0.4 0.3-0.5 0.2-1.3 0.3 0-0.4 0.5 0 0.3-0.3 0.1-0.4 0-0.6 0.5 0.3 0.2 0.1 0-0.2 0-0.2 0.1 0 0.2 0-0.5-0.9-1-1.1-0.4-0.4z" id="TR41" name="Kocaeli">
+  </path>
+  <path d="M224.3 108.3l0 5.6-0.4 2.4-3-0.6-3 3.2-3 0.6-7.3-3.2-1.4 0.2-3.3-0.8 0.1 6.8-0.5 0.2-2.5-0.6-4.2-2.7-2.6-0.6 0.9-1.9 1.6-1.1 3.4-1.3 1.4-0.9 2-2.1 0.8-0.3 14-1.3 2-0.7 1.9-1.1 1-0.8 0.3 0 0.4 0.3 0.3 0.6 0.5 0.4 0.6-0.3z" id="TR77" name="Yalova">
+  </path>
+  <path d="M247.9 115.4l0.2 1.5 0.5 1.3-2.5 1.4-1.1 0.8-0.9 1-0.9 1.7-0.2 2-0.5 1.7-0.6 1.5 0.2 1.9 1.1 1.4 0.2 1.7-0.8 1.7-4.6 4.9-1.3 6.2 0 3.1 2.5 3.6 1.3 1 0.6 3.1-2.3 0.8-2.7-0.5-1.5 0.1-1.3 0.7-1.5 0.2-1.6-0.1-4.9-2-2.4 1.7-1 3.7-0.5 1.4-1 1-1.3 5-2.2 1.6-1 2.8-0.3 4.1-2.6 1.6-3.4 0.1-3.4-0.4-2.1-0.5-1.8-1.4-1.1-1.3-1.5-0.6-2.2-0.1-2.2 0.4-1.8-0.3-1.2-1.8-0.7-0.5-0.9 0-0.5-0.4-0.3-0.7-0.9-1.5-0.1-1.7 0.2-1.3-0.7-1-1.3 0.5-1 1.1-3.8-0.5-12.5-9.3-0.9-1.9-0.8-4.3-0.9-1.6-2.6-1.8-1.7-2.8-0.9-2.3-0.2-1.2 0.6-2.4 0.6-1 0.5-1.2-0.9-2-1.1-0.3-0.4-2.1 1.3-1.3 1.4-1.1 2.3-3.5 0.2-0.5 6.6-0.2 2.5 0.4 4.1-0.2-0.5 0.1-0.4 0.3-0.3 0.3-0.1 0.6 1.9-0.7 2.2-0.1 2.3 0.6 2.1 1.1 0.3-0.4 0.2 0.1 0.1 0.2 0.4 0.1 0.4-0.2 0.5-0.5 0.4-0.2 2.7-0.5 0.7-0.6 0.7-0.4 0.9 0.2 1.6 0.5 1.5 0.1 1.3 0.3 0.7 0.3 1.1 0.7 0.8 0.3 0.8 0.1 3.7-0.1 0.9-0.2 0.6-0.5 0.4-0.8 0.4-1.7 0.4-0.7 0.6 0.3 0.8-0.1 0.8-0.2 0.7-0.4-0.8-1.1-1.1-0.9-1.1-0.7-1.1-0.3-2.6 0-0.4 0.2-1 0.9-0.1-6.8 3.3 0.8 1.4-0.2 7.3 3.2 3-0.6 3-3.2 3 0.6 2.7 0.9 2.7-0.2 8.8-3.3 3.3-0.6 6.5 2.3z" id="TR16" name="Bursa">
+  </path>
+  <path d="M93.1 179.1l-0.1-4.9 1.5-4.9 1.9-0.4 4.3 0.5 2.1-0.6 1.7-1.5 3.5-1.5 2-1.6 2.2 0 1.5 0.2 1.3-0.7 3.5 0.6 3.5 1.1 2-0.8 1.9-1.3 2-0.9 1.9-1.4 1-2.3 0.8-2.6 0.3-2.5-0.8-0.6-0.9-1.4 0.5-1 0.4-0.5 0.5-1.4 0.2-1.6 0.6-2.1 0.3-1.2-0.2-0.4-0.8-0.1-1.9-0.8-0.9-1.9 0.5-0.4 0.8-0.3 3.3-3.5 2.3-1.3 0.5-2.8-0.2-0.5 1.2-0.8 0.7-0.2 1.4 0.3 1.1 0.5 1.1 0.3 1.2-0.7 0.9 0.5 1.5 0.1 1.2-0.3 1.2-1.7 2.5-1.4 0.8-1-0.9-0.1-2.4-0.8-0.7 0.4-0.4 0-0.2-0.6-0.1-0.6-0.2-0.2-0.3 0-0.3-0.3-0.3-0.5-0.2-0.2-0.2-0.4 0-0.8-0.1-0.4-0.4-0.1-0.4 0-0.4-0.1-1.5-1.6-0.5-0.6 0-0.4 0.6-0.2 0.5-0.4 0.7-0.9 0.5-0.2 0.5 0.2 0.4 0.1 0.4-0.8 0.9 1.2 0.1 0.2 0.4 0.1 0.2-0.2 0.1-0.2 0.4-0.2 7.9 1.3 2.1 0.7 1 1.1-0.9 1.4-4.1 2.1-1.2 1.1 0.2 1.6 1.7 0.5 3.9-0.4 4-1.5 4.6-0.2-0.2 0.5-2.3 3.5-1.4 1.1-1.3 1.3 0.4 2.1 1.1 0.3 0.9 2-0.5 1.2-0.6 1-0.6 2.4 0.2 1.2 0.9 2.3 1.7 2.8 2.6 1.8 0.9 1.6 0.8 4.3 0.9 1.9 12.5 9.3 3.8 0.5 1-1.1 1.3-0.5 0.7 1-0.2 1.3 0.1 1.7 0.9 1.5 0.3 0.7 0.5 0.4 0.9 0 0.7 0.5 1.2 1.8 1.8 0.3 2.2-0.4 2.2 0.1 1.5 0.6 1.1 1.3-0.9 1.8-0.3 1.2 0 1.2-0.3 0.7-0.6 0.6-0.6 1.8-0.6 4.3-1.1 1.8-1.1 1.4-0.4 0.9-1.4 2.6-1.6 1.1-3.5 1.2-1.8 0.9-0.4 2.1 0.2 0.8 0.2 1.5-0.4 0.6-4.1-0.6-4.4 2.2-1.8 0.5-1.8 0.2-2-0.2-1.9 0.4-1.3 1.7-1.8 1.1-2.1 0.4-2 0.8-2.1-0.7-2.5-5.5-3.9-4.3-0.3-0.9-0.8-0.4-3.5 1.3-1.9-0.9 0.6-2.1 1.4-2.6-1.2-1.9-0.8 0-1.5 0.3-0.7-0.1-1.9-0.9-2-0.2-3.3 0.5-3.3-1-2.1-1.7-2.2-1-3.6 1.9-1.4-2.7-2.1-1.9-2.6-0.6-8.7 5.6-1.5 0.6-1.3 0.8-0.9 1.3-0.8 1.4-1 1-10.2 7.4-0.3-0.2-1-0.7-0.6-0.8 0-0.6-0.3-1.2-0.3-1.2-0.3-1-0.8-0.4-2.3 0.2-1.2-0.1-0.9-0.4 0.5-0.5 0.2-1.3 0.4-0.6 0.6-0.2 0.4 0.2 0 0.4-0.9 0.3 0 0.3 0.6 0 0.4 0.2 0.4 0.3 0.3 0.4-0.3-0.9 0.3-0.5 0.5-0.3 0.5-0.4 0.8-1.2 5-3.9-0.4-0.3-0.2-0.1 0-0.4 0.1-0.4 0-0.3-0.1-0.6 1.7-0.1 0.6-0.2 0.6-0.5-0.5-0.9 0.8-0.6 2.7-0.9 0.2-0.1 0-0.2 0.1-0.7 0.6-2.3 0-1.3-0.3-0.8-0.8-0.5-1.3-0.1-1.1 0.4-0.9 0.9-0.9 0.4-1.2-0.9-6.7 1.2z m47.1-68.4l0.7-0.2 1.4 0.2 1.2 0.6 0.2 1.1-0.9 0.7-1.7 0.3-0.9 0.3-1.6 1.4-0.9 0.4-1.1-0.5-0.5 0-1-0.4-0.7-0.7 0.1-1.3-0.3-0.5-0.3-0.5 0.2-0.7 0.4-0.4 0.4-0.3 0.2 0.2 0.2 0.7 1.1-0.6 1.3-0.4 1.2-0.1 1.3 0.7z m-0.6 12.1l0.3-0.1 0.2 0.2 0 0.5-0.5 0.1-0.7-0.4-0.8-0.1-0.8-0.1-0.7-0.5-0.1-0.7 0.5-0.4 0.4-0.8 0.4-0.6 1.5 0.7 0.1 0.5-0.2 0.5-0.1 0.7 0.5 0.5z" id="TR10" name="Balikesir">
+  </path>
+  <path d="M98.4 202.5l10.2-7.4 1-1 0.8-1.4 0.9-1.3 1.3-0.8 1.5-0.6 8.7-5.6 2.6 0.6 2.1 1.9 1.4 2.7 1.8 4.7 1.6 7.4 0.8 2.2 1.7 3.3-0.3 3.2-1.3 1.5-3.1 2.6-3 1.2-2.6 1.8-0.6 2.2-0.3 2.4-0.8 2-1.5 1.5-1.3 2.2-0.2 1.3 1.3 1.3 0.7 0.3 1.1 1.4 1.3 4.2 2.8 2.5 3.3 0.3 5.4-0.2 0.9 0.2 1.5 1.4 0.8 3.4 3.3 2.3 3.7 1.7 0.4 0.9 0.5 1.9 0.4 0.9 2 1.9 2.4-0.6 1.1-2 0.8-1.9 2.3 0.1 2.3 1 1.4 0.1 1.4-0.4 2 2.1 1.3 3 4.6-0.7 1.8-0.6 1.3 0.2 0.9 1.1 1.7 0.5 1.1 0.1 2.1 0.6 1.3 1.7 2 6.2 2.1 3.2-7.5 2.7-1.9 0.3-1.9 0.6-1.6 0.9-1.7 0.7-9.2 0.1-11 3-11.7-1-2.4 0.4-5.8 3.9-3.8 1.4-3.1 0.1-0.1 0 0-0.3 0.1-0.5 0-0.5-0.2-0.5 0.7-0.6-0.4-1.4-1.3-2.2-1.2 0.4-1.7 0-1.8-0.3-1.1-0.4-0.3-0.4-0.2-0.4-0.2-0.4-0.5-0.1-0.4 0-0.4-0.1-0.2-0.2-0.1-0.3-0.2-1-0.4-0.3-1.4-0.2-2.4-0.9-1.3-0.2-1.5 0.3-0.8 0.4-0.3 0-0.3 0.2-0.1 0.4-0.2 0.5-0.4 0.2-0.4-0.3-1.1-2.2 0.3-0.8-0.1-0.8-0.2-0.9-0.3-0.8-0.5-0.8-1-1.1-0.5-0.6-0.8 0.4-0.2-0.7 0.1-1.8-0.7-0.6-0.7 0.1-0.8 0.3-0.9 0.2-3 0-0.5 0.2-0.6 3.9-0.2-0.1 0-0.1-0.1-0.1-0.3 0 0.1 0.8 0 0.8-0.2 0.6-0.6 0.2-0.3-0.2-0.6-1.5-0.4-0.7 0 1.2-0.5 0.1-0.7-0.5-0.9-1-0.3-0.5-0.1-0.6 0.2-0.8-1.3 0.3-1.2-1-1.2-1.3-1.1-0.5 0.2 0.9 0.1 0.3-0.3 0-0.3-0.4-1-1 0.1-0.6 0.1-0.6 0-0.5-0.2-0.6-0.4 0-0.3 1.6-1 0.4-1.2-0.4-1.6-1.3-0.4-0.3-2.5-0.7-0.1-0.4 0.3-1 1.2 0.6 0.6-0.8 0.4-1.1 1.1-0.3 0-0.5-0.9-0.6-0.2-1.1 0.4-0.6 0.7 0.7 0-0.6 0.2-0.2 0.1-0.2 0.3-0.2 0.2 0.7 0 0.7-0.1 0.5-0.4 0.6 0.2 0.1 0.3 0.2 0.2 0 0.4 0 0.4 0.1 0.1 0.3 0.1 0.3 0.3 0.2 0.6 0 0.7-0.1 0.4-0.4-0.5-0.7 0-0.5 0.8 0.5 0.3 0 0.6 0 0.5-0.3 1.2-0.8 0.4-0.2 0.6-0.6 0.1-1.2-0.4-1.2-0.8-0.7 0-0.5 1.2 0.6 0.6 0.6 0.4 0 0.7-1.6-0.7-0.4-1.1-1.1-1-0.3-0.6-0.6-0.5-0.1-0.4 0.3-0.4 0.8-0.3 0.2-0.9-0.1 0-0.2 0.4-0.6 0.3-1.2-0.2-0.7-1.4-2.2 0.3 0.4-0.1-0.7-0.6-1.8-0.1-0.4 0-0.4-0.5-2.3 0-0.9 0.1-0.9 0.3-0.7 0.4-0.2 0.7-0.2 1.1-0.5 0.5-0.1 1.3 0.1 1.2 0.3 1 0.5 0.9 0.7 1.6 1.8 0.7 1.1 0.3 0.9 1.1 1.8 1.2 1.5 0.4 0.4 0.3 0.3 0.3 0.3 0.2 0.7 0.1 0.6 0 0.6 0 0.6 0.3 0.6-0.3 0.3-0.2 0.1-0.2 0-0.3-0.3-0.5-0.1-0.6 0.1-0.5 0.3 0.8 0.5 0 0.5-0.4 0.7-0.4 0.9 1.1 0.1 0.5 0.7 0.3 0.9 0.5 1 0.8 2.7 0.8 1.3 1-0.3 0.3-0.8-0.3-0.5-0.8-0.6-0.3-2.5 0.2-1 0.6-1.1 0.7-0.6 0.8 0.2 0-0.4 0.3 0 0.5 0.6 0.6 1.1 0.9 2.5 0.2-0.1 0.5-0.2 0.2-0.1 0.4 0.7 0.7-0.1 0.8-0.4 0.9-0.2 3.8-0.4 2.3-1.1 0.7-0.2 0.3-0.1 0.6-0.6 0.3-0.1 0.5 0 0.4 0.2 0.5 0.1 0.5-0.3 0.1 0.2 0.2-0.2 1.3 0.6 1.1-0.7 1.2-1.2 1.3-0.8 0-0.4-0.4-0.4-0.2 0.1-0.4 0.3-0.3-0.5-0.9 0.5-1.6-0.2-0.4 0.2-1.2-0.6-1.3 0-3 1.3-1 0.5-0.1-0.1 0.4-0.7-0.8-0.6-1.4-2.3-0.7-0.4-1.2-0.4-0.4-0.3-1.1-0.8-0.6-1 0.7 0.7 0.9 0.6 1.3 0.8 0.7 0 0-0.4-0.6-0.7-0.6-0.6-0.6-0.4-0.8-0.4 0.2-0.7 0.3-1.5 0.2-0.8-0.7-0.6-0.5 0.2-0.5 0.4-1 0 0.2-0.6 0.2-0.2-1-0.4-0.6-0.1-0.7 0.1 0.1-0.3 0.1-0.7 0.1-0.2-0.6-0.1-0.5-0.2-0.8-0.6 0.3-0.4 0.4-0.3 0.4-0.1 0.5 0-0.9-1.5-0.4-0.8-0.3-1.1 0.9-0.6 2.4-0.5 1.4-1 0.3 0.1 0.1 0.3 0.1 0.1 0.1 0 0.5 0.1 0.5 0 1.1 0.5 0.6 0.2 0.8 0-0.3-0.8 0.4-0.4 0.4-0.3 0.4-0.2 0.4 0.5 0.1-0.5 0-0.5 0-0.5-0.1-0.6-0.3 0.4-1-1.7-0.3-0.4 1.9-0.8 0.3 1.3 0.8 0.1 0.5-0.7-0.6-1.6 0.8-0.2 0.7-0.4 0.6-0.5 0.5-0.5 0.9 0.6 1-0.6 0.4-1-1-0.3 0.8-1.6 0-0.7-0.8-0.6-0.8 0.7-0.6 0.4-0.5 0.1-0.9 0-0.2-0.2-0.5-0.8-0.3-0.2-0.5 0.2-0.4 0.3-0.4 0-0.4-0.5-0.6 0.5-1.6 0.9-0.6 0.2-0.5-0.2-0.8-1.2-0.7-0.2-0.9-0.6-0.4-1.4 0.1-1.6 0.7-1 0-0.4-0.2 0-0.8 0 0.6-0.8 1.1-0.8 1.2-0.7 0.9-0.2 0.5-0.6-0.4-1.1-1.1-1.9-1.3-1.7-0.7-0.5-1.5-0.8z" id="TR35" name="Izmir">
+  </path>
+  <path d="M121.4 280.3l0.1 0 3.1-0.1 3.8-1.4 5.8-3.9 2.4-0.4 11.7 1 11-3 9.2-0.1 1.7-0.7 1.6-0.9 1.9-0.6 1.9-0.3 7.5-2.7 6.5 0.1 0.5 1.4 0.6 1.3 2.7 1.9 0.6 1.7-0.1 2.1 0.7 3.6-0.4 1.3-1.1 0.8-0.1 1.5 1 1.4 0.8 1.6 1 1.5 3 0.6 0.5 1.4-0.2 1.7-1.4 1-1.9 0.1-2.2 3.1-2.5 2.4-3.7-0.4-3.3 1-1 2.2 0.6 2.2 0.5 0.2 0.5 0.4 0.4 0.8 0.2 0.9-6.2-0.9-3.5-1.9-2.9-2.5-3.5-0.7-2.5 1.8-1.7 3.3-1.9 1.5-5.7 0.4-3.4-0.1-2-1.1-2.2 0-2.1 0.6-2.2-0.4-3.3-2.3-3.8-0.5-1.9-0.7-1.6-1.1-1.6 0-1.5 0.9-0.6 1-2.5 5.6-0.6 1-0.8 0-0.8 0.4-0.4 0.8-0.2 0.8-0.5 0.5-1.2-0.1 0 0.5 0.7 0.5-0.3 0.2-2.8 0.2-0.6 0.2-0.6 0.5-0.3-0.4-0.4-0.3-0.3 0-0.3 0.3-0.1-0.5 0-0.2-0.2-0.1-0.4 0.2-0.1 0.1-0.1-0.2-0.4-0.1 0.5-0.6 0.3-0.6 0.1-0.6-0.2-0.7 0.7-0.3 0.3-0.1 0-0.4-0.4-1.2 0.2-2.7-0.8 0.3-0.3-0.4-0.3 0-0.4 0.3-0.3 0.4 0.2-1 0.3-0.9 0.1-0.8-0.3-1 0.2-0.3-0.2-0.3-0.2-0.3 0.2-0.7 0.7 0.5 0.5-1 0.1-1.3-0.2-0.7-0.7-0.2-2.7-1.8-4.1-1.2-1.8-0.9 0.4-1.2 0.9-0.3 3.1 0.3 1.1-0.2 4.1-1.5 0.6-0.4 1.1-1.4 0.3-0.9 0.2-1.4 0.1-1.3-0.1-0.7-0.4-0.6-0.4-0.5-0.3-0.7 0.1-1.1 0.2-0.3 0.6-0.5 0.2-0.4 0.1-0.3z" id="TR09" name="Aydin">
+  </path>
+  <path d="M128.1 308.9l0.6-1 2.5-5.6 0.6-1 1.5-0.9 1.6 0 1.6 1.1 1.9 0.7 3.8 0.5 3.3 2.3 2.2 0.4 2.1-0.6 2.2 0 2 1.1 3.4 0.1 5.7-0.4 1.9-1.5 1.7-3.3 2.5-1.8 3.5 0.7 2.9 2.5 3.5 1.9 6.2 0.9 0.6 1-0.2 1.2 0 1.7 0.5 1.8 1.2 0.4 1.7 0 2.2 0.9 1.4 2.5 0.7 2.7 1.6 2.3 3.5 0.6 0.6 0.6 0.8 1.6 0.6 0.6 3.5 1.6 2.8 2.8 0.7 2.3 0.4 2.3 0.1 1.9 0.2 1 1.2 1.1 2.6 0.2 4.7 2.6 1.7-0.8 0.9-1.3 0.6-1.5 0.3-3.9 2.2-1.8 1.1 3-0.8 3.5 1.9 0.7 2.3-2.9 5.7-0.8 4 5.6-5.1 11.8 0.6 3.7-0.9 3.2-2.3 1.7-2.1 2-0.5 1.6 0.3 1.6-1.1 0.6-1.4-0.6-3 1.2-1.6 3.2-0.3 1-0.4 0.9 0 0.7 0 0.8-0.3 1.5-0.9 1.2-1.3 0.7-0.2-0.2-0.4-0.9-0.6-0.7-2.9-1-0.8-1-0.6 0.5-0.2-0.8 0-0.2 0.2-0.2 0-0.5-1.3 0 0.3-0.3-0.5-0.4-0.3-0.1-0.5 0 0.2-0.5 0.4-0.4 0.5-0.2 0.5-0.1 0-0.2-0.1-0.1-0.2-0.1 0.3-1.1-0.3-1-0.6-0.7-0.7-0.4 0-0.4 0.6-0.5 0.3-0.2 0.4-0.1 0-0.5-0.2-2-0.2-1-0.6 0.3-0.3 0-0.6-0.8-2.3 0.9-1-0.1 0.9-0.3 0.2-0.5-0.3-0.8-0.5-0.9 0.2-0.4 0.5-1.1 0.3-0.6 0.7 0.6 0.5-0.5 0.7-0.9 0.7-0.3 0 0.3-0.3 0.7 0.4 0.2 0.6-0.2 0.3-0.4-0.2-0.6-0.2-0.5-0.3-0.5-0.3-0.3-3-2.1-3.7-1.6-0.4-0.5-0.4-0.9-0.8 0.6-0.8 1.1-0.7 0.6 0 0.4 0.4 0 0 0.4-0.9 0.1-0.4 0.1-0.4 0.2-0.1 0.5 0.1 0.5 0 0.5-0.6 0.1 0.2 0.5 0.2 0.2 0.2 0.2-0.3 0.4 0.5 0.5 0.2 0.3 0.3 0 0.2-0.6 0.3-0.5 0.1-0.5-0.3-0.9 0.8 0.8-0.3 1-0.8 0.9-0.7 0.6 0.3 0.6-0.5 0.3-0.8 0.1-0.6-0.2-0.5-0.5 0-0.6 0.4-0.4 0.7-0.1 0-0.5-0.8-0.4-0.5-0.4-0.5-0.2-0.8 0.3-0.2-1.6-1.7-1.2-2.2-0.4-1.4 0.7-0.3 0-0.2-1.1-0.6-0.4-0.6 0.2-0.6 0.9-0.3-0.4-0.6-1.6 0.4-0.8 0.2-1.2-0.1-1.1-0.5-0.6 0-0.2 0-0.1 0.2 0 0.1-0.1-0.1-0.2-0.1-0.1 0-0.2 0.2-0.3-0.3 0-0.2 0.5-0.1 0.3 0 0.4-0.3-0.2 0-0.1-0.1-0.4-0.6-0.7-1.4-0.3-1.1 0.6 0.2 1.5-0.5-0.4-0.5-0.1-0.4-0.1-0.6-0.2 0.7-0.4 0-0.4-1.1 0-0.7-0.2-0.3-0.6-0.2-1.2 0.3 0 0.3 0 0.1-0.2-0.1-0.4-0.1-0.1-0.1-0.2-0.1-0.1-0.1-0.7-0.2-0.3-0.2 0-0.1 0.6-0.5 0.5-0.9 0.3-1.4 0.1-0.5 0.2 0 0.4 0.3 0.4 0.4 0.3 0.3 0 0.4-0.1 0.4 0 0.5 0.5-0.5 0.9-0.4 0.8-0.5 0.7-0.9 0-2.4-1.3-0.5-0.3-0.3 0 0.2 0.9 0.1 0.3-1.3 0.1-0.5-0.2-0.2-0.5 0.2-0.5 0.5-0.3 1.3-0.2 0-0.4-0.6-0.4-0.7-0.6-0.7-0.4-0.8 0.4-0.6 1-0.3 0.9 0.1 0.9 0.7 0.6-0.3 1.3 1.9 1.4 0.3 1.4-0.5-0.4-0.8-0.3-0.7 0.2-0.3 0.9-0.3-0.2-0.3-0.2 0 0.3-0.1 0.2-0.1 0.1-0.2 0.2 0.3 0.1 0.1 0.3-2.4 0.9-1 0.7-0.8 1.3-0.7 1.3-0.9 1.4-1.1 0.9-1.2-0.4-0.2 0.4-0.2 0.2-0.2 0.1-0.4 0.1 0.1 0.2 0.1 0.4 0.1 0.2-0.6 0.3-0.4 0-0.4-0.2-0.2-0.5-0.5 0.8-0.6 0.2-0.6-0.4-0.6-0.6 0.1-0.2 0.1-0.4 0.1-0.2-0.2-0.2-0.2-0.2-0.2-0.4 3.6 0 0.9-0.4 0.5-0.6 0.5-0.7 0.7-0.7-0.7-0.8-0.9 0.8-0.4 0.3 0-0.3 0.5-0.5 0.1-0.8-0.1-0.7-0.5-0.5-0.5-0.3-0.1 0.2 0 0.7-0.3 0.3-0.5 0-0.5-0.3-0.4-0.2-0.4 0.2-0.5 0-0.5-0.2-0.2-0.6 0.3-0.2 1.7-0.4-0.4-0.4 1 0.1 0.3-0.1 0.3-0.2 0.2-0.3 0.2-0.2 0-0.1 1.8-0.1 0.5-0.3-0.2 0.9 0.7 0.1 0.7-0.6 0.1-0.8-0.5-0.4-0.9-0.1-0.3-0.3 0.1-0.4 0.4-0.4 0.5-0.4 0.3-0.5 0.2 0.4 0.2 0.3 0.6 0.6-0.2-1.1-0.1-1.2-0.3-0.5-0.5-0.1-0.6 0-0.4 0.3-0.8 1.3-1 0.7-0.4-0.1-0.2-0.6-0.7 0.7-1.9 0.6-0.7 0.4-0.3 0-0.3-0.8-0.4 0.2-0.6 0.6-0.7 0.4-0.2-0.8-0.4 0-0.3 0.5-0.4 0.3-0.3-0.2-0.3-0.5-0.3-0.1-0.4 0.8-0.3 0-0.6-0.5-0.8-0.5-1-0.2-0.9 0.4 0-0.4-0.5 0.2-0.6 0-0.6-0.2-0.7 0-0.8 0.2-1 1.3-0.7 0.5 0 0.4 0.2 0.5-0.7 1.9-0.1 1.3-1.6-0.8-0.8-0.3-0.8-0.2-0.9 0.1-0.7 0.2-0.5 0-0.2-0.7-3.3 1.2-0.2 0.4-0.2 0.3-0.2 0.2-0.2-0.2-0.6-0.5-0.4-0.2-1.1-0.2-0.4 0-0.6 0.2-0.1-0.7-0.4-0.4-0.5 0-0.6 0.3 0-0.2 0-0.1-0.2 0-0.1-0.1 0.2-0.3 0-0.4-0.2-0.3-0.4-0.2 0-0.4 0.6 0.3 0.8 0.2 0.8 0 0.6-0.3 0.4-0.6 0.2-1 0.6-0.6 0.5-0.4 0.4-0.1 1.2 0.1 3.5-0.6 1.7 0.2 0.9-0.3 0.2-0.7 0.1-0.8 0.2-0.7 1.1-0.3 2.2 1.4 0.6-0.3 0.8 0.4 0.6 0 0.7-0.1 0.5 0.1 1.2-1.1 0.7-0.4 4.1-0.1 0.5-0.2 0.3 0.4 0.8 0.3 1 0.3 0.9 0 1.6-0.2 0.8 0.3 0.8 0.7 0.2-0.6 0.3-0.3 0.9-0.7-0.3-0.7-0.5-0.3-0.7-0.2-0.8 0 0.3-0.4 0.4 0.2 0.1-0.4-0.3-0.6-0.5-0.5 0.2 0 0.1-0.1 0.1-0.1 0.2-0.1 0.4 0.2 0.3-0.2 0.5-0.3 0.5-0.2 0-0.3-1-1-0.4-0.6-0.3-0.5 0.7 0.4 0.3-0.4-0.3-0.2-0.1-0.2-0.1-0.2-0.2-0.2 0.4 0 0.8-0.1 0.5 0.1 0-0.4-1 0 0-0.4 1.1 0 0.5 0.1 0.3 0.3 0.3-0.3 0.3-0.1 0.2 0.1 0.2 0.3 0.3 0 0.5-0.3 1.1 0.5 0.4-0.2 0.3 0 0.1 0.4 0.3 0.8 0.1-0.3 0-0.1 0-0.1-0.1-0.3 0.1-0.3 0-0.2-0.2-0.2-0.3-0.1 0-0.4 0.4-0.1 0.4 0.1 0.3 0.1 0.2 0.3 1-1.6 0.3-0.4 0-0.5-0.6 0 0.3-0.6 0.3-0.6 0.8 0.6 0.7 0.2 0.4-0.4-0.3-0.8 2.6-1 1.4-0.4 0-0.3-0.4-0.5-0.3-0.2-0.5-0.2-6.2 1-2.3-0.1-0.9 0.2 0.1 0.7 0 0.4-0.8-0.4-5-0.8-0.5 0.1-0.6 0.6-0.6 0.1-0.5-0.1-1.4-0.3-1.2 0.1-3.9 1.3-0.5-0.2-0.3 0 0 0.2-0.3 0.6-0.4-0.1-0.4-0.1-0.6 0-0.5 0.2-1-0.7-1.5 0-1.5 0.6-0.9 0.9-0.9-0.5-1.3-0.5-1.1 0.1-0.3 1.4-1.1-0.9-0.5-0.2-0.7-0.2-1.4 0.2-0.5-0.2-0.5-0.4-0.8-1.3-0.3-0.3-0.8 0-0.7 0.7-0.3-0.5 0.1-0.2-0.3 0-0.1 0.6-0.6 1.4-0.1-0.3-0.1-0.1 0.1-0.1 0.1-0.3 0-0.1-0.1 0-0.1-0.1-0.1-0.2 0.2-0.2 0.1-0.1-0.1-0.1-0.2-0.4-0.4 0.3-1.3 0.3-0.6 0.2 0 0.4 0.2 0.6-0.3 0.7-0.5 0.5-0.7 0.3 0.2 0.5 0.2 0.3-0.5-0.2-0.2 0-0.3 0.2-0.3-0.5-0.9 0.2-0.5-0.9-0.2-1.3-0.1-1-0.2-1-0.4-0.8-0.2-0.8 0.5-1.3 0.4 0 0.8-0.3 0.8-0.6 0.6-0.7-0.3-0.3-0.4-0.1-0.4 0.1-0.5 0.3-0.2-0.2-0.1-0.2-0.1-0.4 0.4 0.3 0.5-0.6 1.5 0.5 0.9-0.2 0-0.4 0.1-0.5 0.1-0.5-0.2-0.7 0.5 0.2 0.4 0.3 0.1 0.5 0 0.7 0.3 0 0.3-0.6 0.3-0.5 0.4-0.1 0.3 0.4 0.2-0.2 0-0.1 0.1-0.2 0 1 0.2 0.3 0.3 0 0.5 0 0.4 0.3 0.3 0.2 0.3 0.1 0.7-0.2-0.2 0.1 0 0.1-0.1 0-0.1 0.1 0.7 1.3 0.7 0.4 0.7-0.1 1.2-0.9 1-0.5 0.4-0.3 0.5-0.3 1.2 0 0.5-0.3 0-0.4-0.7 0.1-0.1 0.1-0.2 0.2-0.4-1.9-0.3-1-0.6-0.4 0-0.4 2.2-0.5 0.6 0.1-0.5 1.2 0.5-0.1 0.4-0.3 0.7-0.8-0.7-0.3-0.3-0.4 0-1.2 0.1-0.2 0.6-0.5 0.3-0.3 0.1-0.4 0.1-0.8 0.1-0.4-0.6-0.4 0-0.1-0.4-0.1-0.2 0.2 0 0.3-0.1 0.1-1.1-0.1-0.6 0.2-0.2 0.5-0.3 0.9-0.6 0.8-0.7 0.4-0.7-0.3 0.8-0.7 0.1-0.8-0.5-0.5-1.1 0-0.1 0.2-0.5 0.5-0.4 0.2-0.3-0.3 0.1-0.6 0.4-0.5 0.8-1.1 0-0.5 0.2-0.6 0.1-0.9-0.6-0.9-0.3 0-0.2 1.6-1.1 0.6-1.3-0.2-1-0.8-0.4-1.3 0.4-1.2 0.9-1 1.1-0.5-0.6-0.9-0.9-0.5-0.2 0.1z" id="TR48" name="Mugla">
+  </path>
+  <path d="M216.3 375.3l1.3-0.7 0.9-1.2 0.3-1.5 0-0.8 0-0.7 0.4-0.9 0.3-1 1.6-3.2 3-1.2 1.4 0.6 1.1-0.6-0.3-1.6 0.5-1.6 2.1-2 2.3-1.7 0.9-3.2-0.6-3.7 5.1-11.8 1.4-0.2 1.3-0.7 1.1-1.6 1.3-1.3 1.9-3.5 0.7-4.4 2.6-3.6 8.6-4.4 2.9-0.5 7-3 2.9 0.4 2.9 3.6 1.1 0.4 6.6-0.3 4.3 0.5 3.7 0 1.8-0.5 2.9-3.1 0.9-2.6 3.3-2.9 4.2 1.7 4.9-1.7 2.6-0.4 2.2-1.6 2.4-0.9 2.5 0.4 1 1.3 1.2 1.2 1.8 1.5 2.1 0.8 4.7 0 12.2 2.6 4 2.6 3 2.8 3.3 2.3 2.4 2.5 2.1 3 1.4 1.3 1.4 1 3.2 3 1.8 0.8 1.5 0.9 0.2 1.9-1.2 0.9-0.5 1.8 0.7 1.6 2 0.8 2.2 0.2 1.5 0.3 1 1.4 0.8 4-0.4 4 1.7 4.3 1.9 4 1.3 1.6 1.6 1.1 1.9 1 0.9 1.9-0.4 3.5 0.2 6.5-0.7 2.8-0.8 1.5-0.6 1.6-0.2 1.5-0.4 1.4-0.7 1.1-0.2 0.4-0.2-0.1-1.7-0.2-0.8-0.2-3.7-2.1-0.5-0.5-0.3-0.7-0.8-0.4-1-0.3-0.8-0.4-2.2-3-0.4-0.1-0.2-0.3-0.9-0.6-0.2-0.3-0.2-1.7-0.1-0.5-1.1-1.6-2.9-2.6-0.6-1.6-0.1-0.5-0.2-0.4-0.5-0.8-0.5-0.9-0.2-0.2-0.6-0.3-0.2 0-0.8-1.8-0.6-1-0.7-0.4-2.9-3-0.3-0.2-0.5 0-0.5 0-0.5-0.2-0.4-0.2-0.3-0.3-0.2-0.2-1.9 0.1-1-0.1-0.4-0.6-0.5-0.5-1.3-0.5-1.3-0.2-0.8 0.2-0.5-0.4-1.8-0.8-0.9-1.3-0.6-0.6-0.6 0.1-1-0.2-3.6-1.6-0.8-0.7-0.7-0.8-9-4-1.3-0.2-0.1-1.5-1.7-1-19.1-2.9-7.8 0.5-1.3-0.4-1-0.6-1.9-1.5-2.8 1.9-1.2 1.3-0.7 1.8-0.6 1.1-0.2 0.4 0 1.9-0.3 1.9 0.1 1 0.5 0.9 0 0.4-0.4 0.5-0.3 0.5-0.2 0.6-0.1 0.8 0.1 1.1 0.3 0.6 0.3 0.5 0.3 0.7 0.3-0.4-0.1 1.2-0.7 2.1 0.2 0.7-1.7 1.4-0.7 0.9-0.5 2.1-1.1 1.6 0.1 0.5-0.7 1 0.1 1 0.5 0.8 0.7 0.4-0.3 0.9 1.2 0.4-0.7 0.9-1.3 1.1-0.5 1.2 0.3 0 0.2-0.3 0 0.1 0.1 0.1 0.4 0.1-0.5 0.5-0.7 0.5-0.6 0.5-0.5 1.4-0.6 0.7-1.4 1.2 0.1-2.5-0.2-1-0.6-0.5-1.1 0.3-5-2.3-1 0-3.6 0.6-0.4 0.5-0.2 0.9 0 1.2-0.3 0-0.1-0.4-0.3-0.8-0.3 1.1 0 0.5-0.7-0.4 0.1 0.4-0.1 0.4-1.7-0.4-0.4-0.2-0.4-0.3-0.4-0.2-0.6 0.3 1 0 0 0.4-3.3 1.7-0.7-0.1-0.5 0.4-0.6-0.1-0.5-0.2-0.6-0.1-0.5 0.1-0.2 0.1-0.6 0.6-0.8 0.5-1.8 0.4-0.7 0.3 0.2 0.1 0.1 0 0.1 0.1 0 0.3-0.5 0-1.2 0.3 0 0.4 1 0-0.6 0.7-0.7 0.5-0.8 0.3-0.8 0.2 0-0.5 0.2-0.2 0.2-0.1 0.1-0.2 0.1-0.3-0.6 0.1-0.1 0.1-0.2 0.3-0.6-0.6-0.6-0.2-0.5 0.1-0.6 0.2-0.2 0.3 0 0.2-0.2 0.2-0.5 0.1 0 0.2-0.8 1.1-0.2-1.2-1.6-0.8-0.5-1.2 0.7 0.3 0.3-0.3-0.1-0.6-0.4-0.2-2.4 0.3 0-0.3 0.4-0.3 0.5-0.1 0.5-0.1 0.5 0-1-0.4-3.8 0-1.3-0.3-3-1.7-0.5 0.6-0.3-0.6-0.1-1.6-0.3 0.4-0.2-0.1-0.2-0.2-0.3-0.1-0.5 0.2-0.2 0.1-0.1 0.2-0.2 0.3-0.3 0.3-0.1 0.4-0.2 0.4-0.4 0.2-0.4-0.3-0.3-0.6-0.3-0.4-0.3 0.4-2.9-2.7z" id="TR07" name="Antalya">
+  </path>
+  <path d="M373.5 387l0.2-0.4 0.7-1.1 0.4-1.4 0.2-1.5 0.6-1.6 0.8-1.5 0.7-2.8-0.2-6.5 0.4-3.5 3.1-0.4 3.1 0.8 2.9 0 2.7-1.3 2.8-0.6 2.9 0.1 1.5-0.2 1.2-1.2 0.5-2.1 0.7-1.9 0.7-0.3 0.7-0.1 1.7 0.9 1.8 0.7 1.2-1.6-1.1-1.8-2.2-1.6-2.5-0.7-1-0.8-0.9-1.2-1.2-0.5-0.7-1.6-0.4-1.7-0.8-1.4-1-1.2-0.1-1.9 1.8-0.3 0.8-0.3 2.1-1.4 1.4-0.5 0.6 0.3 0.1 0.5 0.4 0.7 1.7 0.4 1-1.7 0.6-2.6 1.5-1.9 1.8-0.6 1.6-1.1 1.5-1.4 1.7-1 2-0.6 6-0.5 3.8-1.5 3.9-0.4 1.6 0.5 1.2-0.1 1.7-0.9 3.5-0.7 4.6-3.5 1.7-0.7 3.6-0.3 3.3-1.3 1.6-1.9 1.3-0.8 4.2-1.5 2.7-1.3 2.1-2.1 1.4-0.7 2.5-0.9 0.9-0.6 0.6-1.9 3.5-0.1 1.6-0.6 1.5-0.9 3.3-1.4 3.3 0.8 1.6 3.6 1.8 3.3 2.3 1.8 0.1 6.1 1 3.4 2.3 1.7 2.9-0.2 1.8 1.9-1.4 3.7 0 3.4 0.7 3.3 0.2 1.7-0.2 1.6-1.8 1.6-2 0.6-2.5 1.7 0 0.1-0.2 0-0.8 0.2-0.6 0.3 0.1-0.3 0.3-0.9-0.7-0.4-2-2.1-3.9-2-0.2 0.4-1.4-0.8-2 0.5-3.2 1.5-1.4 0.2-0.6 0.2-1.4 0.9-0.3 0.2-0.5 1.1-0.2 0.3-1.5 0.8-4.1 3.8-5.2 3.2-1.4 1.2-4.1 5.3-0.4 0.9-0.2 0.6-0.5 0.3-1 0.5-1.6 1.7-1.7 1-0.1 1.5 0.2 1.9-0.1 1.6-0.9 0.8-1.5 0.3-1.3 0.4-0.5 1.3 0.3-0.1 0.2-0.2-0.1 0.4-0.9 1.2-0.4 0.7-0.2 0.9 0 0.7-0.3 0.4-0.8 0 0-0.4 0.4-1-0.2-1.7-0.7-1.5-1-0.6-0.7-0.2-0.6-0.4-0.6-0.2-0.7 0.6-0.9 1.4-0.4 0.6-0.8 0.2 0.3 0.1 0.2 0.1 0.1 0.2-0.5 0.5-0.7 1.3-0.6 0.2-0.4 0.1-1.7 0.7-0.3 0.3-1.5 1.6-0.2 0.6-0.3 1.6-0.3 0.4-0.1-0.4-1.2-1.8-0.2-0.9-0.4-0.2-0.6 0.1-0.7 0.3-1.1 1-1.1 1.4-1 1-1-0.2 0.6-0.3 0-0.5-1.1-0.1-2-0.5-1-0.2-1 0.2-1.7 0.9-0.7 0.2-1.8-0.7-1-0.1-0.9 1.1-1 0.1-2.2-0.1-1.4 0.4-0.5 0.1-0.6-0.2-1-0.5-0.5-0.1-1.1 0.3-0.6 0.7-0.4 1-0.7 0.8-0.5 0.4-0.2 0-0.1-0.2-0.5-0.2-0.6-0.1-1.5 0.1-3.1-0.8-0.9 0-3.1 1.6-0.5 0.2-0.4 0.7-2.6 1.9-2-0.1-4.3-1-1.8-0.9-2.9-1.9z" id="TR33" name="Mersin">
+  </path>
+  <path d="M539.2 332.9l-1-0.4-1-0.2-0.9 0.5-3.9 4.5 0 2.5 0.7 1.2-1.8 2.3-0.7 0.5-0.8 0.2-0.4 0.4-1.6 1.8-0.7 0.6-1.8 0.4-4 0.2-1.7 0.7-0.6 0.5-0.5 1.1-0.5 0.4 0.2-0.4 0-0.3-0.2-0.3-0.4-0.2-0.4 0.9-0.7 0.7-0.5 0.7 0.4 0.9 0.7-0.9 1 0.3 0.2-1 0.2 0.1 0.2 0.2 0.1 0.2 0.1 0.3 0.3-0.4 0-0.4 0-0.4-0.3-0.4 0.7-0.4 0.3 0.3 0.2 0.6 0.3 0.3 0.5-0.1 0.5-0.4 0.5-0.2 0.6 0.3-2.8 1.3-1.3 1-0.8 1.4 0.1 0.6 0.7-0.4 2.1-2.5 0.6-0.4 0.8-0.2-1.8 1.8-0.3 0.5-0.4 1.1-0.3 0.5-0.2 0.5 0 0.8-0.1 0.7-0.4 0.2-0.4 0.1-0.7 0.6-0.5 0.1-1.5 0.1-0.6-0.1-1.5-1.4-0.4-0.2-0.7 0.2-0.4 0.3-0.1 0.6 0.4 0.1 0.4 0.1 1.7 0.7-2.1-0.6-2-0.2-0.4 0.1-1.1 0.6-0.3 0.3-0.2 0.4-0.4 0.3-1 0.3-1.2 1.1-0.1 0.2-0.5-0.3-0.8-1.1-0.5-0.3-0.7-0.2-12-7.3-1.3-0.4-1.5-1.1-1-0.3-0.7-0.1-0.6 0 0-0.1 2.5-1.7 2-0.6 1.8-1.6 0.2-1.6-0.2-1.7-0.7-3.3 0-3.4 1.4-3.7-1.8-1.9-2.9 0.2-2.3-1.7-1-3.4-0.1-6.1-2.3-1.8-1.8-3.3-1.6-3.6 0-2.8 0.2-1.3 1.2-1.9 0.7-0.6 0.7-0.7 0.7-2.5-0.3-1.7-1.2-3-0.2-3 1.5-2.2 2.4 0.2 2.4 0.8 4.7-0.8 6.2-6.3 8.2 0.7 4.3 1.1 5.8 2.3 2.5-1.2-1-11 17.6-12.2 2.6-3.5 2-4.1 1.3-1.9 2.1-5 2-1.7 3.7-2.1 3.8-1 2.5 1.1 1.8 2.8 1.2 3.2 2 2.1-2.6 2.5-1.5 3.8-2.4 10.7-1.4 3.8-0.6 4-0.1 1.8 0.3 2.9 1.5 3.7-0.1 2.4-1.6 1.6-0.9 0.5-1.3 1.7-3.6 0-4.5 0.3-2.2 3.7-2.7 6.2-3.1 7.7 0 4.6 1.4 4.4 1-0.1 3.1 0.6 1.3 1.1 0.4 0.8 0.6 3.4-0.7 3.1-1.4 3.6z" id="TR01" name="Adana">
+  </path>
+  <path d="M336.8 86.3l3.5 0.3 3 0.8 10.2 0.3 2.3 0.1 4.1 0.9-0.3 1.7 0 1.8 1.1 0.7 1.4 0.2 2.2 1.4 5.4 2.7 1.8 3.3-0.1 1.7-0.1 0.8-0.1 1-0.7 3.4-1.7 0.7-1.4 1.3-0.2 3.4 1.8 5-0.8 1.5-1.7 1.9-1.3 2.3-3.9 2.1-6.5-1-2 0.6-2 1.4-5.6 1.3-3.3 1.5-4 0.9-5.9-0.1-1.9 0.3-4.2 1.7-1.6-0.2-1.5-0.6-1.4-0.2-1-0.5-1.6-1.7-8 0.9-4.2-2.6-4.4-1.5-1.2 1.3-0.5 2.4 0.2 3.7-1.5 3.2-3.9 2.2-2.9 3.9-3.1-0.5-2.8-1-1.8-2.3-2.9-5.2-0.7-2.7 0.9-2.3-1.1-2.2-1-1.2-0.3-1.6 0.6-0.7 0.8-0.4 1.3-3.9 1.9-2.9 3.3 0.2 3.1-1.5 0.6-1.9-0.4-1.9-0.1-2.1 3-2.3 3.9 1.4 7.7-0.3 5.4 2.3 4.6-0.5 3.6-2.8 1.8-4.5 0.2-3.3 2.3-1.8 6.1-1 4.4-1.1 2.3-2.7 0.8-5.5z" id="TR14" name="Bolu">
+  </path>
+  <path d="M292.4 142.5l2.9-3.9 3.9-2.2 1.5-3.2-0.2-3.7 0.5-2.4 1.2-1.3 4.4 1.5 4.2 2.6 8-0.9 1.6 1.7 1 0.5 1.4 0.2 1.5 0.6 1.6 0.2 4.2-1.7 1.9-0.3 5.9 0.1 4-0.9 3.3-1.5 5.6-1.3 2-1.4 2-0.6 6.5 1 3.9-2.1 1.3-2.3 1.7-1.9 0.8-1.5-1.8-5 0.2-3.4 1.4-1.3 1.7-0.7 3.7-0.1 3.8 0.6 13.9 6.5 1.4 1.8 1.1 2.2 1.5 1.8 1.8 1.3 0.8 0.4 2.1 1.8 1.5 0.9 1 1.6 0.5 2.1 3.1 2.5 3.5-0.4 0.2-1.6 0.6-1.8 0.8-0.3 1 0 1.5 0.6 1.4 0.9 6.4 2.1-0.6 5.1-0.6 3.5 0 4.2 0.3 3.7-0.6 3.6-5.5 0.6-3.5 1.5-2.2 5.3-1.2 5.2-1.4 5.2 1.2 5.3 3.8 4.6 1.3 2.3 1.9 8.8 3.8 7.4 0.9 3.4 5.4 3.4 2.4 2 0.8 0.3 0.7 0.6 0.7 1.2 1 0.7 2.5 0.2 1.6 0.6 0.6 0.7 3 1.1-0.4 2-1.6 4.1 1.9 5.1-0.1 3.6-4 3.8-1.8 0.9-4.2-0.2-4.2 1.2-3.9 2.2-4.1 1.1-1-2.4-1.5-2.2-1.3-2.3-1-2.5-0.1-3.5 0.6-3.6 0.2-3.3-0.3-3.3-2.5-5.9-4.7-3.4-2.7-0.8-0.8-0.5-2.1-1.6-2 0-0.9 1.3-0.5 1.6-0.4 3.2-0.7 1.1-2.1-0.3-2.7-2.2-2.3-0.7-4.8 4-1.8 2.3-2.1 1.2-3.6-1.5-3 1.4-2.8 2.4-2-0.2-1.7-1.6-1.6-0.9-4-1.4-2.4 0.3-5 1.5-1.7-0.5-6.8-5.7-2.1-1.3-2-0.9 1.1-0.8 2.5-1.2 0.5-0.6 0.4-0.7 1-0.3 1.1-0.1 1.1-1.2 0.9-1.4-0.3-1.9-1.5-1-1-1.6-0.1-2.4-0.1-0.3-0.2-0.8 0.5-1.9 0.2-1.8 0.1-1.9-0.6-1.3-0.7-1.1-0.2-1.9-0.6-1.3-2.4-2.1-2.4-6.5-0.3-3.1 2-2.2-0.1-1.6-0.6-0.4-0.7-1.1-0.4-0.9-1.6-0.1-1.4-0.7-1.2-1.9-0.6-1.9-0.2-1.6-0.6-1.1 0-1.8-2.2 0.3-1.9-1.3-1.7 0.6-3.5 0.1-1.8 0.4-1.6-0.5-1.4 0.4-1.9-2.1-1.2 0.2-1.2 0.4-4.4-0.6-1.3 1.1-1.3 1-1.3-0.5-1.2-0.7-2.7-0.3-4.6 1.9-1.9 0.2-1.1-0.4-0.3-1.3-0.4-3.7-2.1-2.6z" id="TR06" name="Ankara">
+  </path>
+  <path d="M248.6 118.2l1.3 2.8 1.7 2.5 1.9 1.6 1.7 1.9 4.2 1.3 6.6-1.7 2.1-0.2 1.7 0.5 1.8 0 1.5 0.9 1.2 1.8 0.8 0.7 3.5-0.1 2.5 0.6 0.7 2.7 2.9 5.2 1.8 2.3-4.9 0.2-3.8 3.1-0.9 3.1-0.6 3.3-1.6 2.8-2.4 1.8-2.6 0-2.4 1-0.8 1.4-0.8 1.2-1.4 0.7-1.3 1.1-0.4 6.3-2.1 3.6-2.6 3.1-1.8 0.5-3.6 0.4-3.7 1-2.1-0.5-5.2-3.8-1.7-0.7-1.9-1.2-0.7-1-1.7-3.3-0.2-2.7 0.8-5.2 2.7 0.5 2.3-0.8-0.6-3.1-1.3-1-2.5-3.6 0-3.1 1.3-6.2 4.6-4.9 0.8-1.7-0.2-1.7-1.1-1.4-0.2-1.9 0.6-1.5 0.5-1.7 0.2-2 0.9-1.7 0.9-1 1.1-0.8 2.5-1.4z" id="TR11" name="Bilecik">
+  </path>
+  <path d="M286.5 141l2.8 1 3.1 0.5 2.1 2.6 0.4 3.7 0.3 1.3 1.1 0.4 1.9-0.2 4.6-1.9 2.7 0.3 1.2 0.7 1.3 0.5 1.3-1 1.3-1.1 4.4 0.6 1.2-0.4 1.2-0.2 1.9 2.1 1.4-0.4 1.6 0.5 1.8-0.4 3.5-0.1 1.7-0.6 1.9 1.3 2.2-0.3 0 1.8 0.6 1.1 0.2 1.6 0.6 1.9 1.2 1.9 1.4 0.7 1.6 0.1 0.4 0.9 0.7 1.1 0.6 0.4 0.1 1.6-2 2.2 0.3 3.1 2.4 6.5 2.4 2.1 0.6 1.3 0.2 1.9 0.7 1.1 0.6 1.3-0.1 1.9-0.2 1.8-0.5 1.9 0.2 0.8 0.1 0.3 0.1 2.4 1 1.6 1.5 1 0.3 1.9-0.9 1.4-1.1 1.2-1.1 0.1-1 0.3-0.4 0.7-0.5 0.6-2.5 1.2-1.1 0.8-0.2 1.8-0.3 1.8-0.7 0.9-3.8 0.7-2.8-0.3-1.8-0.5-3.7-0.1-6.1 0.6-3.6-2.7-2.3-5.4-3.4-3.5-1.9 0.5-1.7 1.5-1.7 1.1-1.8 0.5-3.5 2.7-3.4 1.5-2.1-2.4-2.4-1.1-1.6 1.3-3 3-3.2 2.1-1.7 0.8-2.2 0.4-2.1-1.2-0.8-0.6-0.8-0.5-1.1-1.4-0.7-1.9-1.3-1.3-1.7-0.4-0.9-3.9-4.7-6.3-0.6-4.7-1.3-3.7-5.2-5-1.8-3 2.6-3.1 2.1-3.6 0.4-6.3 1.3-1.1 1.4-0.7 0.8-1.2 0.8-1.4 2.4-1 2.6 0 2.4-1.8 1.6-2.8 0.6-3.3 0.9-3.1 3.8-3.1 4.9-0.2z" id="TR26" name="Eskisehir">
+  </path>
+  <path d="M397.1 83.1l1.1 1.4 0.7 0.6 6.1 0.6 4.3 2.9 1.8 2.1 2.2 0.7 1.8-0.6 5-3 3.7-0.7 7.7-4.1 1.6-0.6 0.7 0.4 0.5 2.5-1.5 2-1.2 1.4-0.5 1.9 1.7 3 2.8 1 1.5 1.4 1.6 1.2 2 0.4 1.9 0.1 2.4 3.9-0.6 2.5-1 2.5 0.3 2.6 1.2 2.4 0.3 2.2-0.1 2.2 0.6 2.3 1.2 2 0.7 1.5 0.5 1.7 0.4 1.6-0.1 1.6-0.7 0.4-1.1 2.6-1.4 2.4-0.8 0.4-1 0.2-3.8 2.2-4.4-0.4-13.1-4.2-6.4-2.1-1.4-0.9-1.5-0.6-1 0-0.8 0.3-0.6 1.8-0.2 1.6-3.5 0.4-3.1-2.5-0.5-2.1-1-1.6-1.5-0.9-2.1-1.8-0.8-0.4-1.8-1.3-1.5-1.8-1.1-2.2-1.4-1.8-13.9-6.5-3.8-0.6-3.7 0.1 0.7-3.4 0.1-1 0.1-0.8 4.9-2.3 5.6-4.5 2.3-4.2 1.7-1 4.6 0.5 4.6-2.5 2-5.1z" id="TR18" name="Çankiri">
+  </path>
+  <path d="M385.2 52.5l1.6 1.8 2.9-0.4 3.5-1.2 3.5 2.6 1.3 5.6 1.3 3.1-4.6 0.9-2.5 2.5-2.2 3-0.4 2.1 0.9 6.8 2.7 0.4 2.5 1.1 1 1.5 0.4 0.8-2 5.1-4.6 2.5-4.6-0.5-1.7 1-2.3 4.2-5.6 4.5-4.9 2.3 0.1-1.7-1.8-3.3-5.4-2.7-2.2-1.4-1.4-0.2-1.1-0.7 0-1.8 0.3-1.7-4.1-0.9-2.3-0.1 0-5.6 1.5-5.1 0.8-3.3 1.7-2.1 2.5-3.5 5.2 0.2 5-1.3 5.7-4.8 2.1-4.6 2.7-0.8 4.5-4.3z" id="TR78" name="Karabük">
+  </path>
+  <path d="M569.8 97.6l-0.8 1.6 0.5 1.9 0.6 0.4 2.1 0.5 2.7 1.6 3.9 1.4 2.5 1.5 3.1 1.3 3.4 0.3 3.3-0.5 3.1 0.3 10.9 7.6 6.4 0.4 1.6 3 0.9 3.8-2.5 4.9-2.8 4.1-1.7 0.7-1.8 0.4-0.7 0-0.6 0.2-1.7 1.3-1.7 1-4 0.6-4-0.2-4.4 0.6-6.3 1.6-1.7 0.8-5.4-0.8-1.8 0.6-1.7 1-1.3 3.6-1 3.7-0.9 2.4-1.5 1.6-7 2.7-7.9 0.4-11.1 2.2-0.5-1.3-0.9-0.9-0.9-1.8 0.1-2.4 0.3-3.5-2-1.9-2 0.6-1.9 0.8-2.3 0.5-2.2 0.2-3.7-0.8-4.4 0.4-3.8-2.6-3.3-3.7 1.9-4 1.4-1.6 2.6-1 0.9-0.3 1.6-0.7 1.4-1.6 1.3-1.9 1.4-2.5 2.1-4.7 1.2-1.5 4-0.3 3.8 1.1 1.2 1 1.3 0.7 1.1 0.3 0.9 0.4 0.8 0.7 0.9 0 2.9-1.4 3.9-2.6 0.7-0.7 0.4-0.1 0.4-0.2 0.3-3.2 3.8-0.8 2.1-3 0-2.4 0.8-2 1.7-2.5-1-2.5-0.8-0.3-0.7-0.6-1-0.9-0.5-1.1 0.6-0.8 0-0.5-0.4 0 0-0.4 1.4-0.7 5.2-1.3 1.6-0.8 0.3-0.4 0.3 0.2 2.5 0.1 1.7 1.1 0.8 1.6z" id="TR60" name="Tokat">
+  </path>
+  <path d="M638.8 118.8l3.9 14.9-0.1 3.5 1.7 2.6 2.7 1.4 2.9 2.2 3 1.8 4.8-1.2 5 1.6 4.8 2.4-0.2 3.1-1 2.4-2.2 0-2.1-0.4-2.5 0.6-2.3 1.6-2.3-0.4-2.2-1.7-2.1 1.2-1.8 5.2 0.4 1.9 3.3-0.1 3.5-0.9 1 1.2-0.5 1.7-1 0.2-0.9 0-1.8 0.9-1.2 2.1-2.3 3.1-0.6 6.4-1.1 2.2 0.6 2.3 1.7 1.6 1.5 1 1.1 1.5-0.4 1-1.7 1.1-0.5 0.5-0.4 0.5-0.4 0.5-0.6 0.1 0.2 0.7 0.1 1.1 0 2 0.6 1.8 0.3 1.8-0.2 1.1-0.1 1.2 0.3 0.9 0.2 1-0.4 2.1-1 1.6-3.7 1.3-3.4 2.6-3.1 0.9-3.2-0.5-1.7 0.3-1.6 0.7-3.7 0.1-1.8 0.9-1.7 1.1-1.8 0.8-1.7 1.1-3.9 0.9-4.1-2-2.1 0.5-1 2.4 0.5 2.9 0.8 2.7 0.6 1.3 0.3 1.3-0.8 2.3-3.4 3.7-2 1.3-1.1 0.4-2.4 2.9-2.4 2.2-2.8 1.3-10.7 0.9-1.2-0.6-1.2-0.7-6.1-0.9-6.3 1.5 0.1-2.5 1.2-2 0.3-0.9 0.2-1 1.9-5.6 1.3-4.8 0.9-2.3 1.1-2.2 2-5.8-1.7-5.4-3.8-2.1-4.1-0.7-4.4 0-4.3 1.4-2.4-0.8-2.3-1.8-7.9-1.1-3.6 1.3-4.7-0.7-4.5-3.3-1.6-0.2-1.5-0.6-0.4-0.5-0.6-1.3-0.4-0.6-2.3-1.2-2.5-0.2 1.8-2.1 2.1-1.6 1.5-2 1.2-2.3 1.4-2.3 1.7-2 4.1-3.2 3.4-3.4 1.4-5.1-0.1-1.4-0.5-1.4-1.6-0.9-2.3-4.1-1.4-4.5 11.1-2.2 7.9-0.4 7-2.7 1.5-1.6 0.9-2.4 1-3.7 1.3-3.6 1.7-1 1.8-0.6 5.4 0.8 1.7-0.8 6.3-1.6 4.4-0.6 4 0.2 4-0.6 1.7-1 1.7-1.3 0.6-0.2 0.7 0 1.8-0.4 1.7-0.7 2.8-4.1 2.5-4.9 2.6 5.1 3.6 2.9 1.7-0.2 1.4-1.1 1.4-1.9 1.7-1.3 4 0.2 1-0.6 0.2-1.1-0.5-0.7 0.1-1.8 0.5-0.8 1.9-0.4 2.2-0.2 1.6-0.8 1.4-1.2z" id="TR58" name="Sivas">
+  </path>
+  <path d="M483.5 71.9l2.5 4.4 0.6 2.3 0.3 2.5 0.7 2.3 3.7-0.4 1.8 0.4 0.4 1.8-0.7 1.6-1 1.2-0.6 1.9-0.2 6.3-0.7 4.1 0.5 1.7 1.9 4.2 1.3 2.2 1.5 1 7.9 1.3 3.6 2.2 1.6 0.3 0.8 0.3 1.2 2.9 0 2.3-1.1 4.5-4.1 6.3-0.5 1.4 0 1.7-0.5 4.2-1.9 0.7-4.6 0.4-0.5 2.8 0.6 0.7-0.1 1-0.5 1.4-0.1 1.2-1.3 1.7-3.7 2.3-2.2 0.2-4-1.2-7.2 3.5-3.8 0.2-1.9-0.2-2.8 1.1-7.3-1.3-4.6 1.5-4.5 2.1-7.5 0.9-2.7 1.3 0-3.2 1.2-2.5 1-1.5 0.2-2.1-0.7-1.8 0-0.7-0.1-0.7-0.9-1-1.2-0.1-1.2-1.2-1.9-4.5-0.6-2.9 3.8-2.2 1-0.2 0.8-0.4 1.4-2.4 1.1-2.6 0.7-0.4 0.1-1.6-0.4-1.6-0.5-1.7-0.7-1.5-1.2-2-0.6-2.3 0.1-2.2-0.3-2.2-1.2-2.4-0.3-2.6 1-2.5 0.6-2.5-2.4-3.9 4.2-0.9 6.7-2.8 1.2-3.1-1.6-1.7-1-0.4-0.9-2.4 0.5-1.2 1.6-2 1.7-4.2 2.2-2 1.1-1.3 1.3-3.4 1.7-2.4 2.5-0.6 1.2 1.6 1.8-0.1 1 0.2 0.8 0.9 1.6 0.3 1.6-0.4 1.4 0.3 1.2 0.9 0.5 0.9 0.8 0.6 5.4 1.7 1-1.2 0.9-0.8 0.2-0.3 0.1-0.5 0.1-1.1 0.1-0.4z" id="TR19" name="Çorum">
+  </path>
+  <path d="M493.1 83.4l14.7 4.2 2.9-0.5 1.6 0.9 6.9 5.3 1.6 2.8 1.6 0.4 3.6-0.2 1.8 0.3 6.3 0.1 3.7 1.8 2-0.5 1.7-1.4 2.2-1.5 1.4-2.5 0.9-2.9 1.9-1.2 1.7 0.6 1.3 1.5 0.6 1.4 0.8 1.4 5.1 3.7-1.4 0.7 0 0.4 0.4 0 0 0.5-0.6 0.8 0.5 1.1 1 0.9 0.7 0.6 0.8 0.3 1 2.5-1.7 2.5-0.8 2 0 2.4-2.1 3-3.8 0.8-0.3 3.2-0.4 0.2-0.4 0.1-0.7 0.7-3.9 2.6-2.9 1.4-0.9 0-0.8-0.7-0.9-0.4-1.1-0.3-1.3-0.7-1.2-1-3.8-1.1-4 0.3-1.2 1.5-2.1 4.7-1.4 2.5-1.3 1.9-1.4 1.6-1.6 0.7-0.9 0.3-2.6 1-1.4 1.6-1.9 4-2.3-0.8-2.5 0.2-2.1-0.2-0.9-0.6-0.4-1.3-0.4-0.2 0.5-4.2 0-1.7 0.5-1.4 4.1-6.3 1.1-4.5 0-2.3-1.2-2.9-0.8-0.3-1.6-0.3-3.6-2.2-7.9-1.3-1.5-1-1.3-2.2-1.9-4.2-0.5-1.7 0.7-4.1 0.2-6.3 0.6-1.9 1-1.2 0.7-1.6-0.4-1.8z" id="TR05" name="Amasya">
+  </path>
+  <path d="M202.3 176.8l1.8 1.4 2.1 0.5 3.4 0.4 3.4-0.1 2.6-1.6 0.3-4.1 1-2.8 2.2-1.6 1.3-5 1-1 0.5-1.4 1-3.7 2.4-1.7 4.9 2 1.6 0.1 1.5-0.2 1.3-0.7 1.5-0.1-0.8 5.2 0.2 2.7 1.7 3.3 0.7 1 1.9 1.2 1.7 0.7 5.2 3.8 2.1 0.5 3.7-1 3.6-0.4 1.8-0.5 1.8 3 5.2 5 1.3 3.7 0.6 4.7 4.7 6.3 0.9 3.9-3.3 5.1-5.7 2.6-0.9 2.5-0.7 2.7-1.3 2.6-1.3 4.1-1.9 3.2-1.4 1.8-9.8 5.9 0-6.3-2.2-2.6-1.4-0.6-5.9-1.4-3 0.1-1.4 0.4-1.2 0.7-0.8 3.5-1.2 2.8-2.7 0.2-6 1.7-3.4 0.1-3.2-0.4-2.9-1.9-2.8 0-2.6 2.3 0.2-3.9-1-2.8-1.5-2.9 0.4-3.7-0.3-1.1-0.5-1-3.1-4.7-1.3-1-7.2-1.5-1-0.8-2.4-2.7 0.4-0.6-0.2-1.5-0.2-0.8 0.4-2.1 1.8-0.9 3.5-1.2 1.6-1.1 1.4-2.6 0.4-0.9 1.1-1.4 1.1-1.8 0.6-4.3 0.6-1.8 0.6-0.6 0.3-0.7 0-1.2 0.3-1.2 0.9-1.8z" id="TR43" name="Kütahya">
+  </path>
+  <path d="M368 352.8l0.4-4-0.8-4-1-1.4-1.5-0.3-2.2-0.2-2-0.8-0.7-1.6 0.5-1.8 1.2-0.9-0.2-1.9-1.5-0.9-1.8-0.8-3.2-3-1.4-1-1.4-1.3-2.1-3-2.4-2.5-3.3-2.3-3-2.8-4-2.6-12.2-2.6-4.7 0-2.1-0.8-1.8-1.5-1.2-1.2-1-1.3 1.3-3.3 0.4-3.6-0.6-2.2-1.2-1.8 0-2.1 2.1-0.6 1.5-2 0.2-2.8 2-3.1-0.1-4.7-1.1-4.7 1-4 1.6-0.9 3.3-1.3 3-1.9 0.4-2-3.5-3-1.1-1.6-1.6-0.7-3.3-2.8-2.9-3.7-3.7-3-1.3-4.5 8.3-5.5 3.7-3.8 4.1-5.4 0.2-1.4-0.2-1.2-0.1-1.2 0.8-3.3 1.4-2.9 3.6-6 0.4-2.4-0.8-0.5-1.5-1.5 0.2-0.8 0.3-0.8 0.6-4 2.8 0.3 3.8-0.7 0.7-0.9 0.3-1.8 0.2-1.8 2 0.9 2.1 1.3 6.8 5.7 1.7 0.5 5-1.5 2.4-0.3 4 1.4 1.6 0.9 1.7 1.6 2 0.2 2.8-2.4 3-1.4 3.6 1.5 2.1-1.2 1.8-2.3 4.8-4 2.3 0.7 2.7 2.2 2.1 0.3 0.7-1.1 0.4-3.2 0.5-1.6 0.9-1.3 2 0 2.1 1.6 0.8 0.5 2.7 0.8 4.7 3.4 2.5 5.9 0.3 3.3-0.2 3.3-0.6 3.6 0.1 3.5 1 2.5 1.3 2.3 1.5 2.2 1 2.4-0.9 1.7-2.7 3.1-1.1 2-0.7 4.8-1.7 2.6-1.1 3.2-0.3 2.3-0.7 2-0.4 5 1.8 4.6 0.6 0.5 0.5 0.6 0.4 2.5 0.7 2.3 3.2 4 1.9 1.8 2.1 0.1 5.6-1.2 7.4-0.5 3.8 0.1 3.7-0.9 3.7-1.5 3.6-0.8 3.5 0.6 0.7 3.1 1.5 2.4 2.3 0.9 2.2 1.2 1.8 2.6 1.7 2.9 1.9 1.8 1.5 2.2 0.5 3.4-1.1 3.1-1.1 1.3-0.7 1.6-0.3 2.7 0 1.7 1.8 2.6 1.2 1 1.8 1.9 1.1 2.6-0.6 1.9-0.9 0.6-2.5 0.9-1.4 0.7-2.1 2.1-2.7 1.3-4.2 1.5-1.3 0.8-1.6 1.9-1.1-2.3-3.2-5.4-2.8-3.1-3.9-4.1-5.3-5.9-1.1-3.8 0.2-0.9-0.4-3-1.9-0.7-4.7-0.2-2.2 1.4-1.4 1.8-2.3 3.1-4.8 1.8-7.4 0.5-7.1 0.9-4.5 1.8-2.5 2.8-5.6 6.2-5.7 7.9-4.5 5.8-1.2 4 0.3 2.1 2.9 1.3 2.9 0.2 0.7 1.6-0.2 1.8-1.4 2.2-6.8 6.7-5.4 4.1z" id="TR42" name="Konya">
+  </path>
+  <path d="M377.3 366.7l-0.9-1.9-1.9-1-1.6-1.1-1.3-1.6-1.9-4-1.7-4.3 5.4-4.1 6.8-6.7 1.4-2.2 0.2-1.8-0.7-1.6-2.9-0.2-2.9-1.3-0.3-2.1 1.2-4 4.5-5.8 5.7-7.9 5.6-6.2 2.5-2.8 4.5-1.8 7.1-0.9 7.4-0.5 4.8-1.8 2.3-3.1 1.4-1.8 2.2-1.4 4.7 0.2 1.9 0.7 0.4 3-0.2 0.9 1.1 3.8 5.3 5.9 3.9 4.1 2.8 3.1 3.2 5.4 1.1 2.3-3.3 1.3-3.6 0.3-1.7 0.7-4.6 3.5-3.5 0.7-1.7 0.9-1.2 0.1-1.6-0.5-3.9 0.4-3.8 1.5-6 0.5-2 0.6-1.7 1-1.5 1.4-1.6 1.1-1.8 0.6-1.5 1.9-0.6 2.6-1 1.7-1.7-0.4-0.4-0.7-0.1-0.5-0.6-0.3-1.4 0.5-2.1 1.4-0.8 0.3-1.8 0.3 0.1 1.9 1 1.2 0.8 1.4 0.4 1.7 0.7 1.6 1.2 0.5 0.9 1.2 1 0.8 2.5 0.7 2.2 1.6 1.1 1.8-1.2 1.6-1.8-0.7-1.7-0.9-0.7 0.1-0.7 0.3-0.7 1.9-0.5 2.1-1.2 1.2-1.5 0.2-2.9-0.1-2.8 0.6-2.7 1.3-2.9 0-3.1-0.8-3.1 0.4z" id="TR70" name="Karaman">
+  </path>
+  <path d="M478.9 310.3l-3.3-0.8-3.3 1.4-1.5 0.9-1.6 0.6-3.5 0.1-1.1-2.6-1.8-1.9-1.2-1-1.8-2.6 0-1.7 0.3-2.7 0.7-1.6 1.1-1.3 1.1-3.1-0.5-3.4-1.5-2.2-1.9-1.8-1.7-2.9-1.8-2.6-2.2-1.2-2.3-0.9-1.5-2.4-0.7-3.1 15.7-23.4 2.7 0.4 4.1-1.2 2.7-0.1 1.3 0.7 2 2 2.4 0.7 5-1.9 3.3 9.2 2.8 2.9 7.7 0.1 1.3 4.1-0.5 2.5 0.3 2.6 0.9 2.1 0.5 2.2-2.2 1.4-0.2 3.1-0.8 3.6-6.2 6.3-4.7 0.8-2.4-0.8-2.4-0.2-1.5 2.2 0.2 3 1.2 3 0.3 1.7-0.7 2.5-0.7 0.7-0.7 0.6-1.2 1.9-0.2 1.3 0 2.8z" id="TR51" name="Nigde">
+  </path>
+  <path d="M560.3 254.1l-2-2.1-1.2-3.2-1.8-2.8-2.5-1.1-3.8 1-3.7 2.1-2 1.7-2.1 5-1.3 1.9-2 4.1-2.6 3.5-17.6 12.2 1 11-2.5 1.2-5.8-2.3-4.3-1.1-8.2-0.7 0.8-3.6 0.2-3.1 2.2-1.4-0.5-2.2-0.9-2.1-0.3-2.6 0.5-2.5-1.3-4.1-7.7-0.1-2.8-2.9-3.3-9.2 1.3-2.6 1.9-2 4.2-6.7 0.2-2.9-0.5-2.8 0.2-2.8-3.3-4.3-2.2-4.4 1.3-3.1 1-3.3 0-1.5 0.1-1.5 0.5-1.3 0.7-1.1 10.7 1.7 5.4-3.4 2.1-0.7 15.4-10 4-5.6 2.5 0.2 2.3 1.2 0.4 0.6 0.6 1.3 0.4 0.5 1.5 0.6 1.6 0.2 4.5 3.3 4.7 0.7 3.6-1.3 7.9 1.1 2.3 1.8 2.4 0.8 4.3-1.4 4.4 0 4.1 0.7 3.8 2.1 1.7 5.4-2 5.8-1.1 2.2-0.9 2.3-1.3 4.8-1.9 5.6-0.2 1-0.3 0.9-1.2 2-0.1 2.5-1.6 1-0.9 1.9-0.6 3.2-1.5 2.4-3.7 4.3-1.5 2.2-1.7 1.8z" id="TR38" name="Kayseri">
+  </path>
+  <path d="M314.6 308.3l-2.5-0.4-2.4 0.9-2.2 1.6-2.6 0.4-4.9 1.7-4.2-1.7-0.7-1.7-1-1.4-1.4-0.2-0.7 0.1-0.9-1.1-0.4-1-2.9-4.4-1.3-2.9-1.6-4.8-2.8-1.8-3 0.1-3.3-0.6-2.1-1.6-1.8-2-2.2-3-2.3-1.6-2.2 2.3-1.3 0.9-1.4 0.7-5.2 3.8-1.8 0.8-1.8-0.6-0.9-1.8-0.7-2 3.7-0.1 3.4-1.9 1.6-2.9 0.6-6.2 1-1.9 3.2-1.9 4.3-4.2 1.9-1.1 2.4-2.2 2.4-2.7 1.7-0.7 1.9-0.5 2.6-2.2 1-0.2 1.1-0.1 3.6-1.4 3-2.8 2.9-3.4 5.9-4.8 2.4-2.6 0.9-0.8 1.2 0.2 0.9 0.6 0.9 0.7 2.1 3.1 1.1 0.7 1.2 0.3 1.3 4.5 3.7 3 2.9 3.7 3.3 2.8 1.6 0.7 1.1 1.6 3.5 3-0.4 2-3 1.9-3.3 1.3-1.6 0.9-1 4 1.1 4.7 0.1 4.7-2 3.1-0.2 2.8-1.5 2-2.1 0.6 0 2.1 1.2 1.8 0.6 2.2-0.4 3.6-1.3 3.3z" id="TR32" name="Isparta">
+  </path>
+  <path d="M128.9 189.6l3.6-1.9 2.2 1 2.1 1.7 3.3 1 3.3-0.5 2 0.2 1.9 0.9 0.7 0.1 1.5-0.3 0.8 0 1.2 1.9-1.4 2.6-0.6 2.1 1.9 0.9 3.5-1.3 0.8 0.4 0.3 0.9 3.9 4.3 2.5 5.5 2.1 0.7 2-0.8 2.1-0.4 1.8-1.1 1.3-1.7 1.9-0.4 2 0.2 1.8-0.2 1.8-0.5 4.4-2.2 4.1 0.6 2.4 2.7 1 0.8 7.2 1.5 1.3 1 3.1 4.7 0.5 1 0.3 1.1-0.4 3.7 1.5 2.9 1 2.8-0.2 3.9-1.7 1.7-3.7 2.9-0.5 1.2-1.4 1.6-1.4 0.5 0.2 2.1 1.3 0.5 1.1 1.3 0.2 1.4 0 1.4 0.4 3-0.3 2.8-0.7 1.9-0.9 1.5-1.3 1.2-0.5 0.9 1.2 0.9 1.5 0 1.7 2-4.4 1-2.1 4.1 0.2 1.6-0.6 1.5-2 0.9-2.1 0-6.5-0.1-2.1-3.2-2-6.2-1.3-1.7-2.1-0.6-1.1-0.1-1.7-0.5-0.9-1.1-1.3-0.2-1.8 0.6-4.6 0.7-1.3-3-2-2.1-1.4 0.4-1.4-0.1-2.3-1-2.3-0.1-0.8 1.9-1.1 2-2.4 0.6-2-1.9-0.4-0.9-0.5-1.9-0.4-0.9-3.7-1.7-3.3-2.3-0.8-3.4-1.5-1.4-0.9-0.2-5.4 0.2-3.3-0.3-2.8-2.5-1.3-4.2-1.1-1.4-0.7-0.3-1.3-1.3 0.2-1.3 1.3-2.2 1.5-1.5 0.8-2 0.3-2.4 0.6-2.2 2.6-1.8 3-1.2 3.1-2.6 1.3-1.5 0.3-3.2-1.7-3.3-0.8-2.2-1.6-7.4-1.8-4.7z" id="TR45" name="Manisa">
+  </path>
+  <path d="M185.3 305l-0.2-0.9-0.4-0.8-0.5-0.4-0.5-0.2-0.6-2.2 1-2.2 3.3-1 3.7 0.4 2.5-2.4 2.2-3.1 1.9-0.1 1.4-1 0.2-1.7-0.5-1.4-3-0.6-1-1.5-0.8-1.6-1-1.4 0.1-1.5 1.1-0.8 0.4-1.3-0.7-3.6 0.1-2.1-0.6-1.7-2.7-1.9-0.6-1.3-0.5-1.4 2.1 0 2-0.9 0.6-1.5-0.2-1.6 2.1-4.1 4.4-1 2.9 0.6 2.5 1.6 2.7 0 2.4-1.7 1.7 0.3 1.5 1.7 1.6 0.1 1.5-0.5 0.7-0.4 0.6-0.3 1.2 0.8 0.5-0.1 0.7-1.2 0-0.7 2.4-1.9 3.4 0.4 3.6-0.1 1.7-0.5 1.5-1.4-0.4-3.6 0.5-3.6 5.9-1.3 6.5 1.5 5.1 8.6 1.3 1.5 0.7 4-1.3 1.5-12.8 9.6-1.5 0.8-1.5 0.6-0.7 1.8-0.1 6.1 1.2 0.5 2.2-0.1 0.6 0.3 1.3 0.7 0.7 0.2 0.5 0.4 2.2 3.7-3.4 2.8-2 1.2-0.7 0.3-1.4 0.8-0.6 1.3-0.5 1.3-6 3.3-0.1 1.5 0.5 1.7-0.1 2.4 0.6 2.2 0.4 0 0.2 0 0.3 0.3 0.3 0.4 0.2 0.9-0.1 0.5-2.1 4.2-4.7 7-1.3 2.9-0.8 3.1-0.4 3.2-2.2 1.8-0.3 3.9-0.6 1.5-0.9 1.3-1.7 0.8-4.7-2.6-2.6-0.2-1.2-1.1-0.2-1-0.1-1.9-0.4-2.3-0.7-2.3-2.8-2.8-3.5-1.6-0.6-0.6-0.8-1.6-0.6-0.6-3.5-0.6-1.6-2.3-0.7-2.7-1.4-2.5-2.2-0.9-1.7 0-1.2-0.4-0.5-1.8 0-1.7 0.2-1.2-0.6-1z" id="TR20" name="Denizli">
+  </path>
+  <path d="M236.6 338.5l-4-5.6-5.7 0.8-2.3 2.9-1.9-0.7 0.8-3.5-1.1-3 0.4-3.2 0.8-3.1 1.3-2.9 4.7-7 2.1-4.2 0.1-0.5-0.2-0.9-0.3-0.4-0.3-0.3-0.2 0-0.4 0-0.6-2.2 0.1-2.4-0.5-1.7 0.1-1.5 6-3.3 0.5-1.3 0.6-1.3 1.4-0.8 0.7-0.3 2-1.2 3.4-2.8 3.8-1.4 4.2 0.3 0.7 2 0.9 1.8 1.8 0.6 1.8-0.8 5.2-3.8 1.4-0.7 1.3-0.9 2.2-2.3 2.3 1.6 2.2 3 1.8 2 2.1 1.6 3.3 0.6 3-0.1 2.8 1.8 1.6 4.8 1.3 2.9 2.9 4.4 0.4 1 0.9 1.1 0.7-0.1 1.4 0.2 1 1.4 0.7 1.7-3.3 2.9-0.9 2.6-2.9 3.1-1.8 0.5-3.7 0-4.3-0.5-6.6 0.3-1.1-0.4-2.9-3.6-2.9-0.4-7 3-2.9 0.5-8.6 4.4-2.6 3.6-0.7 4.4-1.9 3.5-1.3 1.3-1.1 1.6-1.3 0.7-1.4 0.2z" id="TR15" name="Burdur">
+  </path>
+  <path d="M416 234.6l4.1-1.1 3.9-2.2 4.2-1.2 4.2 0.2 1.8-0.9 4-3.8 0.1-3.6-1.9-5.1 1.6-4.1 0.7 1 1.9 0.4 1.1-0.1 1.8 0.8 0.7 2.5 1.9 1.6 2.4-1.4 1-0.3 2 0.3 1-0.2-0.5 2.5 1.6 5.4-0.8 3.1-1.7 2.7 0.7 3.1 2.2 1.4 2.4 0.7 2-0.4 1 0.3 0.4 2.8-1.4 3.1 0 2.9 0.9 0.8 1.9 1.5 1.6 1.7 1.8 1.1-15.7 23.4-3.5-0.6-3.6 0.8-3.7 1.5-3.7 0.9-3.8-0.1-7.4 0.5-5.6 1.2-2.1-0.1-1.9-1.8-3.2-4-0.7-2.3-0.4-2.5-0.5-0.6-0.6-0.5-1.8-4.6 0.4-5 0.7-2 0.3-2.3 1.1-3.2 1.7-2.6 0.7-4.8 1.1-2 2.7-3.1 0.9-1.7z" id="TR68" name="Aksaray">
+  </path>
+  <path d="M484.8 250.7l-5 1.9-2.4-0.7-2-2-1.3-0.7-2.7 0.1-4.1 1.2-2.7-0.4-1.8-1.1-1.6-1.7-1.9-1.5-0.9-0.8 0-2.9 1.4-3.1-0.4-2.8-1-0.3-2 0.4-2.4-0.7-2.2-1.4-0.7-3.1 1.7-2.7 0.8-3.1-1.6-5.4 0.5-2.5 5.3 4.5 1.9-0.5-0.2-1.4-0.5-2.7 1-3.3 5.7-2.4 2.6-1.6 3-1.3 1.9-2.6-1-2.3-1.4-2.5 0.6-4-0.6-3.1-1-1.9-0.4-2.2 0.2-1.4 1-0.6 3 0.8 2.8-0.5 0.7 0.2 1.4 0.6 0.4 0.8 0.2 1.3 0.4 1.2 1.2 1.4 1.5 0.8 1 1.9 0.6 2.4 3.8 2.4 1.1 1.9-0.5 1.4 0.2 1.4 0.4 1.3 0.7 1.5 0.7 1.5-0.7 1.1-0.5 1.3-0.1 1.5 0 1.5-1 3.3-1.3 3.1 2.2 4.4 3.3 4.3-0.2 2.8 0.5 2.8-0.2 2.9-4.2 6.7-1.9 2-1.3 2.6z" id="TR50" name="Nevsehir">
+  </path>
+  <path d="M513 139.7l3.3 3.7 3.8 2.6 4.4-0.4 3.7 0.8 2.2-0.2 2.3-0.5 1.9-0.8 2-0.6 2 1.9-0.3 3.5-0.1 2.4 0.9 1.8 0.9 0.9 0.5 1.3 1.4 4.5 2.3 4.1 1.6 0.9 0.5 1.4 0.1 1.4-1.4 5.1-3.4 3.4-4.1 3.2-1.7 2-1.4 2.3-1.2 2.3-1.5 2-2.1 1.6-1.8 2.1-4 5.6-15.4 10-2.1 0.7-5.4 3.4-10.7-1.7-0.7-1.5-0.7-1.5-0.4-1.3-0.2-1.4 0.5-1.4-1.1-1.9-3.8-2.4-0.6-2.4-1-1.9-1.5-0.8-1.2-1.4-0.4-1.2-0.2-1.3-0.4-0.8-1.4-0.6-0.7-0.2-1.3-2.9-2-1.8-2.4-0.4-2.1-1.4-6.6-8-0.6-1.3-0.4-1.4-0.9-1.3-3.7-0.1-2.2-0.7-2.4-2.7-2.5-2.3-2.6-0.1-0.9-0.8-1-1-0.5-1.3 0.2-1.3-0.2-1.3-0.5-1.2 2.7-1.3 7.5-0.9 4.5-2.1 4.6-1.5 7.3 1.3 2.8-1.1 1.9 0.2 3.8-0.2 7.2-3.5 4 1.2 2.2-0.2 3.7-2.3 1.3-1.7 0.1-1.2 0.5-1.4 0.1-1-0.6-0.7 0.5-2.8 4.6-0.4 1.9-0.7 0.4 0.2 0.4 1.3 0.9 0.6 2.1 0.2 2.5-0.2 2.3 0.8z" id="TR66" name="Yozgat">
+  </path>
+  <path d="M438 212.8l0.4-2-3-1.1-0.6-0.7-1.6-0.6-2.5-0.2-1-0.7-0.7-1.2-0.7-0.6-0.8-0.3-2.4-2-5.4-3.4-0.9-3.4 5.3-9.3 7.7-6.3 3.3-5.2 2.1-6.3 7.6-7.3 1 1 0.9 0.8 2.6 0.1 2.5 2.3 2.4 2.7 2.2 0.7 3.7 0.1 0.9 1.3 0.4 1.4 0.6 1.3 6.6 8 2.1 1.4 2.4 0.4 2 1.8 1.3 2.9-2.8 0.5-3-0.8-1 0.6-0.2 1.4 0.4 2.2 1 1.9 0.6 3.1-0.6 4 1.4 2.5 1 2.3-1.9 2.6-3 1.3-2.6 1.6-5.7 2.4-1 3.3 0.5 2.7 0.2 1.4-1.9 0.5-5.3-4.5-1 0.2-2-0.3-1 0.3-2.4 1.4-1.9-1.6-0.7-2.5-1.8-0.8-1.1 0.1-1.9-0.4-0.7-1z" id="TR40" name="Kirsehir">
+  </path>
+  <path d="M205.4 229.4l2.6-2.3 2.8 0 2.9 1.9 3.2 0.4 3.4-0.1 6-1.7 2.7-0.2 1.2-2.8 0.8-3.5 1.2-0.7 1.4-0.4 3-0.1 5.9 1.4 1.4 0.6 2.2 2.6 0 6.3-0.3 2.5-0.7 2.3-2.9 2.8-0.6 2.4-0.9 2.5-1.1 1.4 0.1 1.7-5.9 1.3-0.5 3.6 0.4 3.6-1.5 1.4-1.7 0.5-3.6 0.1-3.4-0.4-2.4 1.9 0 0.7-0.7 1.2-0.5 0.1-1.2-0.8-0.6 0.3-0.7 0.4-1.5 0.5-1.6-0.1-1.5-1.7-1.7-0.3-2.4 1.7-2.7 0-2.5-1.6-2.9-0.6-1.7-2-1.5 0-1.2-0.9 0.5-0.9 1.3-1.2 0.9-1.5 0.7-1.9 0.3-2.8-0.4-3 0-1.4-0.2-1.4-1.1-1.3-1.3-0.5-0.2-2.1 1.4-0.5 1.4-1.6 0.5-1.2 3.7-2.9 1.7-1.7z" id="TR64" name="Usak">
+  </path>
+  <path d="M667.5 148l2 0.1 4.2-0.3 1.9-0.9 1.3 0.8 1.4 0.6 1.4 0.3 1.4 0.3 5.2 3.1 1.8 0.7 1.8 1.1 0.7 1.1 0.8 0.8 2.9 0.9 2.8 1.4 2.9 0.3 2.8-0.3 2.8 0.2 2.7-0.2 2.6-1.3 5.3-1.3 2.1-2.2 1.8-2.7 2.5-1 2.7 0.3 2.4-0.3 1.9-1.8 2.3-0.8 7.7 1.5-1.4 3.3-0.4 3.6 2.5 1.3 8.1 0.1 3.2 4.2-0.1 1.8 0.2 1.7 0.7 1.2 0.8 1.1 1.8 1.4 2 0.8 1.6 1.8-1.1 2.6-1.7 3.1-0.1 3.9-3.1-1.1-3.9-0.1-3.8-0.6-7.1-0.2-0.9-0.5-1.8-0.7-0.5 0-0.2 0.2-1.5 0.4-1.8 0.9-1 0.1-4.4 1.6-3.7-1-2.5-1.5-1.8 0.6-2.2 2.7-3.3 1.1-7.2 1.1-3.8 0.1-3.6-1-3.7-0.2-1.9 1-2 0.5-2.4-0.4-2.5 0.5-4.7 1.8-1.3 1-0.9 1.7-1.2 0.6-1.3-0.1-0.7 1-0.6 1-0.5 0.3-2.9 1.1-0.7 1.9 0.6 1.9 0.7 1.1-1.3 0.8-1.3 0.3-1.1 0.7-0.7 3.5-1.1 0.5-0.2 0-0.4 0.4-0.2 1.4 0.2 1.4 0.4 0.3 0.4 0.4 0.4 3.8-1.5 0.3-1.2 0.6-3.1-3.6-2-1.2-2.2-0.9-4.5-0.2-3.7-1.9 1-1.6 0.4-2.1-0.2-1-0.3-0.9 0.1-1.2 0.2-1.1-0.3-1.8-0.6-1.8 0-2-0.1-1.1-0.2-0.7 0.6-0.1 0.4-0.5 0.4-0.5 0.5-0.5 1.7-1.1 0.4-1-1.1-1.5-1.5-1-1.7-1.6-0.6-2.3 1.1-2.2 0.6-6.4 2.3-3.1 1.2-2.1 1.8-0.9 0.9 0 1-0.2 0.5-1.7-1-1.2-3.5 0.9-3.3 0.1-0.4-1.9 1.8-5.2 2.1-1.2 2.2 1.7 2.3 0.4 2.3-1.6 2.5-0.6 2.1 0.4 2.2 0 1-2.4 0.2-3.1z" id="TR24" name="Erzincan">
+  </path>
+  <path d="M666.7 210.6l-0.4-3.8-0.4-0.4-0.4-0.3-0.2-1.4 0.2-1.4 0.4-0.4 0.2 0 1.1-0.5 0.7-3.5 1.1-0.7 1.3-0.3 1.3-0.8-0.7-1.1-0.6-1.9 0.7-1.9 2.9-1.1 0.5-0.3 0.6-1 0.7-1 1.3 0.1 1.2-0.6 0.9-1.7 1.3-1 4.7-1.8 2.5-0.5 2.4 0.4 2-0.5 1.9-1 3.7 0.2 3.6 1 3.8-0.1 7.2-1.1 3.3-1.1 2.2-2.7 1.8-0.6 2.5 1.5 3.7 1 4.4-1.6 1-0.1 1.8-0.9 1.5-0.4 0.2-0.2 0.5 0 1.8 0.7 0.9 0.5 7.1 0.2 3.8 0.6 3.9 0.1-1.8 2.3-2.4 1.1-1.3-0.1-2.2-0.4-0.8 0.7-1.3 2.7-2.2 1.6-2.3 0-2.2 0.8-0.4 1.2-0.4 1-0.7 0.3-3.3-0.2-2.4 0.8-0.7 1.2-0.2 3-0.6 1.6-0.2 1.6 1 4.6-0.4 2.1-0.8 1.9-2.6 0.1-2.3 0.6-0.9 0.6-0.7 1 0.5 2.3 0.3 2.2-0.7 2.9-1.3 2.6-2.9 3.2-4.4 1.7-4.6 0.4-1.7-0.2-1.7 0.4-1.2 1.5-1.4 1.1-1.2-0.4-1.2-0.6-0.8 0.2-0.4 0.1-1.1-1.3-0.9-0.7-2.1-0.6-2-1.5-2.2-1-2-0.2-1.9-0.6-1.5-0.1-1.5-0.9-0.5 0-0.9 0.2-0.5 0.1-2-0.9-3.7 0.3-3.7 1-1.4-0.1-2-2 0-1.7 0.7-1.6-0.1-1.8-1.8-2.7z" id="TR62" name="Tunceli">
+  </path>
+  <path d="M272.4 200.3l1.7 0.4 1.3 1.3 0.7 1.9 1.1 1.4 0.8 0.5 0.8 0.6 2.1 1.2 2.2-0.4 1.7-0.8 3.2-2.1 3-3 1.6-1.3 2.4 1.1 2.1 2.4 3.4-1.5 3.5-2.7 1.8-0.5 1.7-1.1 1.7-1.5 1.9-0.5 3.4 3.5 2.3 5.4 3.6 2.7 6.1-0.6 3.7 0.1 1.8 0.5-0.6 4-0.3 0.8-0.2 0.8 1.5 1.5 0.8 0.5-0.4 2.4-3.6 6-1.4 2.9-0.8 3.3 0.1 1.2 0.2 1.2-0.2 1.4-4.1 5.4-3.7 3.8-8.3 5.5-1.2-0.3-1.1-0.7-2.1-3.1-0.9-0.7-0.9-0.6-1.2-0.2-0.9 0.8-2.4 2.6-5.9 4.8-2.9 3.4-3 2.8-3.6 1.4-1.1 0.1-1 0.2-2.6 2.2-1.9 0.5-1.7 0.7-2.4 2.7-2.4 2.2-1.9 1.1-4.3 4.2-3.2 1.9-1 1.9-0.6 6.2-1.6 2.9-3.4 1.9-3.7 0.1-4.2-0.3-3.8 1.4-2.2-3.7-0.5-0.4-0.7-0.2-1.3-0.7-0.6-0.3-2.2 0.1-1.2-0.5 0.1-6.1 0.7-1.8 1.5-0.6 1.5-0.8 12.8-9.6 1.3-1.5-0.7-4-1.3-1.5-5.1-8.6-6.5-1.5-0.1-1.7 1.1-1.4 0.9-2.5 0.6-2.4 2.9-2.8 0.7-2.3 0.3-2.5 9.8-5.9 1.4-1.8 1.9-3.2 1.3-4.1 1.3-2.6 0.7-2.7 0.9-2.5 5.7-2.6 3.3-5.1z" id="TR03" name="Afyonkarahisar">
+  </path>
+  <path d="M418.8 196.6l-3.8-7.4-1.9-8.8-1.3-2.3-3.8-4.6-1.2-5.3 1.4-5.2 1.2-5.2 2.2-5.3 3.5-1.5 5.5-0.6 0.6-3.6-0.3-3.7 0-4.2 0.6-3.5 0.6-5.1 13.1 4.2 4.4 0.4 0.6 2.9 1.9 4.5 1.2 1.2 1.2 0.1 0.9 1 0.1 0.7 0 0.7 0.7 1.8-0.2 2.1-1 1.5-1.2 2.5 0 3.2 0.5 1.2 0.2 1.3-0.2 1.3 0.5 1.3-7.6 7.3-2.1 6.3-3.3 5.2-7.7 6.3-5.3 9.3z" id="TR71" name="Kinkkale">
+  </path>
+  <path d="M613.5 302.5l-0.1 1.8 0.3 1.7-0.6 2.7-2 1.4-3-0.1-3 0.4-6.3 2.2-6 1.1-2.6 1.3-4.3 4.6-3.7-1.2-1.3-5.3-2.3-1.5-2.3 3.1-5.7 2.6-2.1-3.1-2.6-2.4-1.6-1.1-1.8-0.5-3.9 0.8-1.3 0.3-1.8 0.6-1.6 0.3-0.8-0.9-0.6 0.3-0.5 0.2-0.5 0.2-0.3 0.6-0.5 0.1-1.9-2.4-0.3-4-0.5-0.7-0.6-0.7-0.6-1.7 0.4-1.8 1.3-1.4 1.1-1.8 0-4.7 1.3-1.7 0.9-0.5 1.6-1.6 0.1-2.4-1.5-3.7-0.3-2.9 0.1-1.8 0.6-4 1.4-3.8 2.4-10.7 1.5-3.8 2.6-2.5 1.7-1.8 1.5-2.2 3.7-4.3 1.5-2.4 0.6-3.2 0.9-1.9 1.6-1 6.3-1.5 6.1 0.9 1.2 0.7 1.2 0.6 10.7-0.9-2.8 4.7 0.6 3.6 0.8 0 1.8-0.4 0.9-0.1 7 1.5 6.1 3.6 3.2 1 3.7 1.7 2.4 4.1-0.3 2.5-2.6 6.9-0.3 1.8-0.9 1.4-0.7 0.8-1.1 1.8-2.5 8.8-1.9 3.6-2.3 2.9-2.7 2.3-1.8 2.4-0.1 3.5 1.7 2.8 2.8 1 5.2 3.2z" id="TR46" name="K. Maras">
+  </path>
+  <path d="M841.7 182.8l1.4 3.8 1.9 3.4 1.5 1.4 1.5 1.7 0.8 1.7 1.2 1.2 1.7 2.5-0.2 4 0.2 0.8 0.1 0.9-0.5 2.4-0.4 3 0.2 3.2-3.5 2.8-3.9 1.5-7.7-0.9-1.7 0.6-1.5 1.1-1.9 0.8-2.1 0.2-0.9 0.7-0.6 2.8-1 0.9-4.2-0.1-0.9 2.2 1.5 2.4 0.3 2.6-2 1.7-2.8 3.1-3.3 1.9-8.1-0.6-7.3 2.8-0.5 0.8-2.7 0.3-2.6 0.9-1.4-0.5-0.6-1.6 0.6-2.5-0.6-2.4-3.2-2.3-2.4-3.2-0.3-1.6-0.6-1.4-1-0.9-0.6-0.2-1-1.4-1-3.5 1.4-4.8 3.3-4.1 0.6-2.4-0.3-2.7-1.3-2.4-0.9-0.9-1.1-1.9 0.1-1.9 0-1-0.4-1.1-0.3-0.5-0.8-1.8 0.3-1.4 1.3-2.4 7.6-1.3 3.8 0.9 1.8 1.2 4.6 4.6 2.8 3.9 1.1 1 4.1 1.6 4.1 0.2 1.8-1.4 2-1.2 5.8-1 1.5-1.3 0.9-1.1 3.2-2 1.4-2.3-0.3-2.8 1-2.7 6.5-3.3 1.8-0.1 1.8-0.3 0.9-0.3z" id="TR49" name="Mus">
+  </path>
+  <path d="M834.5 93.6l1 4.9 2.4 3.7 1.8 1.2 1.3 1.7 1 2.4 1.4 2.1 1.9 1.9 1.4 2.6-0.3 2.1-0.7 2.2 1.1 6.2-1.9 1.2-2 0.9-1.6 1.1-1.5 1.2-3 1.7-6.9 2.4-1.5 3.3 1.7 2 1 1.7 1.1 1.3 4.1 0.7 1.5 0.5 1.4 1 0.8 1.1 0.6 1.3 0.8 0.6 1 0.3 1.9 0.8 1.2 1.9 1.1 2.5 1.4 2.3-1.3 1.5-1.6 0.9-1.2-0.1-0.6 0.1-1.2 0.5-1 1.5-1.7 0.6-3.6-0.6-1.7 0.7 3.9 4.7 6.7 2.8-0.6 0.4-0.5 1.7 0.1 8.3-0.5 2.9-1.5 2.5-0.9 0.3-1.8 0.3-1.8 0.1-6.5 3.3-1 2.7 0.3 2.8-1.4 2.3-3.2 2-0.9 1.1-1.5 1.3-5.8 1-2 1.2-1.8 1.4-4.1-0.2-4.1-1.6-1.1-1-2.8-3.9-4.6-4.6-1.8-1.2-3.8-0.9-7.6 1.3-2-3.5-2.1-2.5-2.9-0.3-3.5-1.7-4.6-4.3-1.5-0.9-1.4 0.7-1.4 1-4.2 1.9-4.2-0.6 0.1-3.9 1.7-3.1 1.1-2.6-1.6-1.8-2-0.8-1.8-1.4-0.8-1.1-0.7-1.2-0.2-1.7 0.1-1.8-3.2-4.2-8.1-0.1-2.5-1.3 0.4-3.6 1.4-3.3 7.8 1 1.7-0.3 2.1-1.6 2-2 2.7-1.3 5.9-2.1 1.3-1.7 1.2-2.2-0.2-1.2-3.1-0.3-1.4-0.6-3.1-0.7-2.9-1.7-1.2-3.8-1.4-8.5-1.5-3.8 7.7-3.8 1.9-0.6 1.9-0.2 2.9-0.8 1.4-3.6 1.7-0.7 2.1 0 2-0.7 5.1-4.4 3.6-2.1 3.7 2.1 5.9 0.9 1.7 0.6 0.4 2.1-1.3 2.2-0.6 5.3 3.2 2.9 4.4-1.7 4-2.6 3.7-1.1 3.8 1.1 4 2.3 2.2-3.3 0.1-2.8 0.9-2.5 1.9-1.9 1.2-2.5-0.3-2.7 0.6-2.5 1.5-1.3 1.6-0.8 3.2-0.3 3.3 0.3 2.8-0.6 2.8-0.3z" id="TR25" name="Erzurum">
+  </path>
+  <path d="M597.3 237.1l2.8-1.3 2.4-2.2 2.4-2.9 1.1-0.4 2-1.3 3.4-3.7 0.8-2.3-0.3-1.3-0.6-1.3-0.8-2.7-0.5-2.9 1-2.4 2.1-0.5 4.1 2 3.9-0.9 1.7-1.1 1.8-0.8 1.7-1.1 1.8-0.9 3.7-0.1 1.6-0.7 1.7-0.3 3.2 0.5 3.1-0.9 3.4-2.6 3.7-1.3 3.7 1.9 4.5 0.2 2.2 0.9 2 1.2 3.1 3.6-3.4 0.2-1.3 1.7 0 2.5 0.8 1.6 0.6 1.8 0.2 3.7 0 1.4 0.6 1.8-0.2 0.4 0.1 0.8-0.1 0.6-0.6 0.3-5.2-0.5-1.2 0.2-0.6 0.7 0.3 1-0.3 1.1-0.5 0.9-0.7 0.4-1.2 0.2-0.9 0.5-0.7 0.8-0.6 0.9-0.2 0.7-0.3 1.1-0.7 1.3 0.1 0.4 0.3 0.3 0.2 0.6 0.1 1 0.4 1.2 0.7 1.1 0.7 0.7 0.6-0.6 0.5 0.3 0.8 1.1 0.7 0.6 0.6 0.3 0.6 0.2 2.7 0.4 1.3 0.3 0.2 0.1 0.8 0.8 0.3 0 0.3-0.2 0.4 0 3.8 2 1.4 0.1 2.9-1.1 1.5-0.2 1.1 0.8-0.3 0.5 1.2 0.8 0.4 0.4 1.1 1.8 0 0.3 1.3 0.2 0.8 0.5 1.4 1.3 1.6 0.3 3.9-1.3 1.9 0.2 0.9 0.9 0.6 1.3 0.1 1.4-1.6 5.6-2.1 2.5-2.6 1.2-2 0.5-1.9 0.9-1.3 0.3-1.4 0-3.5 0.7-3.3-0.4-3.3 0-2.8-0.8-0.8-0.5-0.8-0.4-0.3-1.3 1-0.6 1.8-1.8-0.2-1.9-2.8-0.6-2.8 0.8-3.3 0.1-3.5 3.9-3 4.5-3.7 2.1-1.2 2.3-0.1 3.2-2.9 2.6-4 1-1.7 0.8-1.7 0.6-2-0.3-2-0.6-4.4 0.6-4.2 1.7-6.7 1.3 1.9-3.6 2.5-8.8 1.1-1.8 0.7-0.8 0.9-1.4 0.3-1.8 2.6-6.9 0.3-2.5-2.4-4.1-3.7-1.7-3.2-1-6.1-3.6-7-1.5-0.9 0.1-1.8 0.4-0.8 0-0.6-3.6 2.8-4.7z" id="TR44" name="Malatya">
+  </path>
+  <path d="M664 211.5l1.2-0.6 1.5-0.3 1.8 2.7 0.1 1.8-0.7 1.6 0 1.7 2 2 1.4 0.1 3.7-1 3.7-0.3 2 0.9 0.5-0.1 0.9-0.2 0.5 0 1.5 0.9 1.5 0.1 1.9 0.6 2 0.2 2.2 1 2 1.5 2.1 0.6 0.9 0.7 1.1 1.3 0.4-0.1 0.8-0.2 1.2 0.6 1.2 0.4 1.4-1.1 1.2-1.5 1.7-0.4 1.7 0.2 4.6-0.4 4.4-1.7 2.9-3.2 1.3-2.6 0.7-2.9-0.3-2.2-0.5-2.3 0.7-1 0.9-0.6 2.3-0.6 2.6-0.1 10.9-5.9 1.6-0.5 3.9-1.7 1.5 2.9-2 3.9-2.4 3.3-1 4.3 1.2 4.8 2.9 3.5 0.8 2-0.3 2.2-0.6 2.4-0.9 1.6-1.6-0.5-1.4-0.3-2.3 6.4 2.6 3.8 0.5 2.7 0.2 2.8-15.9 0.5-0.8-0.3-1.7-1.3-1-0.5-2.2 0.4-0.7 2-1.1 1.9-1.2 1.9-1.4 0.9-1.6 0.6-3.7-0.2-3.6 0.3-1.3 0.8-3.7 0.5-2 0.8-4-0.3-3.9-1-6.6 1.1-1.9-0.2-3.9 1.3-1.6-0.3-1.4-1.3-0.8-0.5-1.3-0.2 0-0.3-1.1-1.8-0.4-0.4-1.2-0.8 0.3-0.5-1.1-0.8-1.5 0.2-2.9 1.1-1.4-0.1-3.8-2-0.4 0-0.3 0.2-0.3 0-0.8-0.8-0.2-0.1-1.3-0.3-2.7-0.4-0.6-0.2-0.6-0.3-0.7-0.6-0.8-1.1-0.5-0.3-0.6 0.6-0.7-0.7-0.7-1.1-0.4-1.2-0.1-1-0.2-0.6-0.3-0.3-0.1-0.4 0.7-1.3 0.3-1.1 0.2-0.7 0.6-0.9 0.7-0.8 0.9-0.5 1.2-0.2 0.7-0.4 0.5-0.9 0.3-1.1-0.3-1 0.6-0.7 1.2-0.2 5.2 0.5 0.6-0.3 0.1-0.6-0.1-0.8 0.2-0.4-0.6-1.8 0-1.4-0.2-3.7-0.6-1.8-0.8-1.6 0-2.5 1.3-1.7 3.4-0.2z" id="TR23" name="Elazig">
+  </path>
+  <path d="M851.1 212.8l2-1.3 2.3-0.7 1.6-1 1.6-1.3 8.8-1.9 0.1 4.6 1.4 3.1 5.6 3.4 1.9 3-1.4 4.5-3.4 2.6-2.6 2.8-4.4 6.5-0.8 1.9-1 1.7-3 2.1-5.1 2.9-0.8 0.9-0.5 2.5 0.3 1.3 1.7 3.9 0.2 0.7 0.1 1.6-0.5 2.1 0.9 3.1 2.5 0.9-1.3 4-0.6 0.7-0.5 0.8 0 1.8 0.2 1.9-0.2 2.8-1.4 2.1-1.8 0.2-3.2-2.4-4.8-2.7-3-2.2-2.1-0.9-3.3-0.8-3.4-1.4-3.1-2.4-2.8-2.8-3.2-1.5-4.1 1.6-4.1 1-5.1-0.4-4.9-1.9-0.1-1.3 0.2-1.4 0-2.2-0.2-2.2-1.1-3.3-1.7-8.2-4-1.5 0.5-0.8 7.3-2.8 8.1 0.6 3.3-1.9 2.8-3.1 2-1.7-0.3-2.6-1.5-2.4 0.9-2.2 4.2 0.1 1-0.9 0.6-2.8 0.9-0.7 2.1-0.2 1.9-0.8 1.5-1.1 1.7-0.6 7.7 0.9 3.9-1.5 3.5-2.8z" id="TR13" name="Bitlis">
+  </path>
+  <path d="M752.6 179.2l3.1 1.1 4.2 0.6 4.2-1.9 1.4-1 1.4-0.7 1.5 0.9 4.6 4.3 3.5 1.7 2.9 0.3 2.1 2.5 2 3.5-1.3 2.4-0.3 1.4 0.8 1.8 0.3 0.5 0.4 1.1 0 1-0.1 1.9 1.1 1.9 0.9 0.9 1.3 2.4 0.3 2.7-0.6 2.4-3.3 4.1-1.4 4.8 1 3.5 1 1.4 0.6 0.2 1 0.9 0.6 1.4 0.3 1.6-2.3 1.7-5.8 2.2-5.9 3.6-3.1 0.9-8.1-0.3-2.3-0.6-1.7-0.2-4.6 0.7-2.7 1.3-0.3 1.7 0 1.8-1.3 2-1.9 0.9-5.5 0.2-0.2-2.8-0.5-2.7-2.6-3.8 2.3-6.4 1.4 0.3 1.6 0.5 0.9-1.6 0.6-2.4 0.3-2.2-0.8-2-2.9-3.5-1.2-4.8 1-4.3 2.4-3.3 2-3.9-1.5-2.9-3.9 1.7-1.6 0.5-10.9 5.9 0.8-1.9 0.4-2.1-1-4.6 0.2-1.6 0.6-1.6 0.2-3 0.7-1.2 2.4-0.8 3.3 0.2 0.7-0.3 0.4-1 0.4-1.2 2.2-0.8 2.3 0 2.2-1.6 1.3-2.7 0.8-0.7 2.2 0.4 1.3 0.1 2.4-1.1 1.8-2.3z" id="TR12" name="Bingöl">
+  </path>
+  <path d="M570.6 317.3l-2.2 2.5-1.8 2.8-2.6 5.1-3.3 4.2-1.8 1.7-1.1 2.2-2.4 0.3-2.4-0.1-1.8-1.1-1.6-1.7-2.1-0.7-2.3 0.6-1.9 0-2-0.6-2.1 0.4 1.4-3.6 0.7-3.1-0.6-3.4-0.4-0.8-1.3-1.1-3.1-0.6-1 0.1-1.4-4.4 0-4.6 3.1-7.7 2.7-6.2 2.2-3.7 4.5-0.3 3.6 0 0 4.7-1.1 1.8-1.3 1.4-0.4 1.8 0.6 1.7 0.6 0.7 0.5 0.7 0.3 4 1.9 2.4 0.5-0.1 0.3-0.6 0.5-0.2 0.5-0.2 0.6-0.3 0.8 0.9 1.6-0.3 1.8-0.6 1.3-0.3 3.9-0.8 1.8 0.5 1.6 1.1 2.6 2.4 2.1 3.1z" id="TR80" name="Osmaniye">
+  </path>
+  <path d="M687.8 271l-1.9 1.3-2.9 0.9-0.8 0.4-0.6 0.7-0.2 0.9-0.2 2-0.5 0.9-0.6 0.4-2.3 0.8 0.4 0.9 0.1 0.7-0.3 0.8-0.6 0.9 0.3 0.3 0.1 0.4-0.1 0.5-0.3 0.5-0.3-0.1-0.9-0.3-0.4 0-0.7 0.2-0.7 0.5-0.5 0.8-0.4 0.9 0.7-0.2 1.3-0.9 0.6-0.1 0.5 0.5-0.1 1.5 0.6 0.9-0.9 0.2-1.1 0.1-1 0.2-0.6 0.7 0.4 0.3 1.2 1.3-0.3 0.3-0.4 0.2-0.4 0-0.8-0.6-0.4 0.3-0.2 0.5-0.2 0.2-0.2 0.1-0.3 0.1-0.3 0.1-0.4 0.1-0.2-0.1-0.6-0.6-0.1-0.2-1 0.6 0.9 1 2.3 1.8-10.5 1.6-2.3 2.4-0.5 0.3-0.6 1-2.8 3.1-1 0.6-5.8 1-1.5-0.6-2.8 1-0.5 0-0.3 1.4-0.7 0.3-2.1-0.3-0.4 0.3-0.1 0.8 0.1 0.7-0.2 0.3-0.2 0.1-0.1 0.1-0.1 0.1-0.2 0.1-0.2-0.1-0.1-0.5-0.2-0.2-2.1-0.5-0.9-0.4-0.6-0.8-1.4 1-0.5 0-0.7-0.5-3.7-3.3-5.6-2.1-5.2-0.1-5.2 1.1-5.2-3.2-2.8-1-1.7-2.8 0.1-3.5 1.8-2.4 2.7-2.3 2.3-2.9 6.7-1.3 4.2-1.7 4.4-0.6 2 0.6 2 0.3 1.7-0.6 1.7-0.8 4-1 2.9-2.6 0.1-3.2 1.2-2.3 3.7-2.1 3-4.5 3.5-3.9 3.3-0.1 2.8-0.8 2.8 0.6 0.2 1.9-1.8 1.8-1 0.6 0.3 1.3 0.8 0.4 0.8 0.5 2.8 0.8 3.3 0 3.3 0.4 3.5-0.7 1.4 0 1.3-0.3 1.9-0.9 2-0.5 2.6-1.2 2.1-2.5 1.3 0.8 3.8-1.6 1.5 1.6 0.2 1.6-0.4 1.3-1.1 2.5 0.4 0.8-0.4 0.8-1.7 1.2z" id="TR02" name="Adiyaman">
+  </path>
+  <path d="M777.3 287.7l-3 1.5-16.6-0.5-5.2 1.1-0.6 1.4-2.3 3-3.8 0.3-5.2 4.1-2.4 0.9-5.2 3.6-2.1 2-4.6 6-2.2-2.5-1.6-3.1-1.7-4.9-0.2-0.9-0.4-1.7-0.7-4.5 0.3-6.5-0.7-1.5-0.9-0.2-0.8-0.5-1.2-1.1-1.4-0.6-0.4 0.8-0.5 0.7-2.3-1-1.8-1.7-1.6-0.5-1.5-0.8-3.1-2.6-2.8-3-2.6-1.2-2.9-0.1-3.8-0.7-3.7-2 1.7-1.2 0.4-0.8-0.4-0.8 1.1-2.5 0.4-1.3-0.2-1.6-1.5-1.6-3.8 1.6-1.3-0.8 1.6-5.6-0.1-1.4-0.6-1.3-0.9-0.9 6.6-1.1 3.9 1 4 0.3 2-0.8 3.7-0.5 1.3-0.8 3.6-0.3 3.7 0.2 1.6-0.6 1.4-0.9 1.2-1.9 1.1-1.9 0.7-2 2.2-0.4 1 0.5 1.7 1.3 0.8 0.3 15.9-0.5 5.5-0.2 1.9-0.9 1.3-2 0-1.8 0.3-1.7 2.7-1.3 4.6-0.7 1.7 0.2 2.3 0.6 8.1 0.3 3.1-0.9 5.9-3.6 5.8-2.2 2.3-1.7 2.4 3.2 3.2 2.3 0.6 2.4-0.6 2.5 0.6 1.6 1.4 0.5 0.3 2-1.8 1-1.5 0.2-1.5 0.5-2.5 1.2-1.1 1.5-0.4 2.2-1 3.3-0.5 3.5 0.6 6.6-0.4 3.4-0.7 1.4-0.9 1.3-2.2 7.3-1.9 2.2-2.3 1.6-0.5 1.4 0.5 1.7 0.4 2.3 1 1.8z" id="TR21" name="Diyarbakir">
+  </path>
+  <path d="M812.6 290.8l-8.8 6.3-5.3 3.9-7.3 1.5-5.1-3.2-3.3-6.9-3.4-4.3-0.9-0.4-1.2 0-1-1.8-0.4-2.3-0.5-1.7 0.5-1.4 2.3-1.6 1.9-2.2 2.2-7.3 0.9-1.3 0.7-1.4 0.4-3.4-0.6-6.6 0.5-3.5 1-3.3 0.4-2.2 1.1-1.5 2.5-1.2 1.5-0.5 1.5-0.2 1.8-1-0.3-2 2.6-0.9 2.7-0.3 4 1.5 1.7 8.2 1.1 3.3 0.2 2.2 0 2.2-0.2 1.4 0.1 1.3-2.1 2.6-1 3.2-2.4 2.7-5.5 1.5-1.5 2.8 0.4 4 5.1 4.7 8.6 3.5 5.1 5.6z" id="TR72" name="Batman">
+  </path>
+  <path d="M869.8 289.7l-0.5 3.4-2.9 3-8.1-0.8-10-1.4-9.6-2.5-6.3-0.3-3.7 3.7-9.4-0.7-6.7-3.3-5.1-5.6-8.6-3.5-5.1-4.7-0.4-4 1.5-2.8 5.5-1.5 2.4-2.7 1-3.2 2.1-2.6 4.9 1.9 5.1 0.4 4.1-1 4.1-1.6 3.2 1.5 2.8 2.8 3.1 2.4 3.4 1.4 3.3 0.8 2.1 0.9 3 2.2 4.8 2.7 3.2 2.4 1.8-0.2 1.4-2.1 0.2-2.8-0.2-1.9 0-1.8 0.5-0.8 0.6-0.7 1.3-4 3.7-0.3 3.8 0.7 3.4 1.3 0.5 4.3-0.2 2.5 0.3 2.4-0.2 2.6-0.6 2.4-0.2 3.5-0.7 1.5-0.5 1.6 1.9 4.5z" id="TR56" name="Siirt">
+  </path>
+  <path d="M718.4 116.5l1-0.1 0.7-0.8-0.3-1.5 0.6-0.6 0.3-0.2 1.5 0.5 2.9 3.3 1.9 1.1 4.1 0.1 3.9 1.3 2.1 0 2.3-0.8 2.4-0.4 4.9 0 1.9-0.6 0.9-0.2 1.5 3.8 1.4 8.5 1.2 3.8 2.9 1.7 3.1 0.7 1.4 0.6 3.1 0.3 0.2 1.2-1.2 2.2-1.3 1.7-5.9 2.1-2.7 1.3-2 2-2.1 1.6-1.7 0.3-7.8-1-7.7-1.5-2.3 0.8-1.9 1.8-2.4 0.3-2.7-0.3-2.5 1-1.8-3.9-1-4.2 0.2-2 0.6-2 1.5-3.6 0.4-9.1-1.6-9.2z" id="TR69" name="Bayburt">
+  </path>
+  <path d="M685.6 103.3l0.9 0.7 1 0.1 1-0.9 0.8-1.1 2 1.2 0.7 3.7 3.2 3.3 11.1 4.5 2.8 0.3 1-0.2 0.7-0.8 0.6-2.6 1.4-1.1 3.3 2.2 2.3 3.9 1.6 9.2-0.4 9.1-1.5 3.6-0.6 2-0.2 2 1 4.2 1.8 3.9-1.8 2.7-2.1 2.2-5.3 1.3-2.6 1.3-2.7 0.2-2.8-0.2-2.8 0.3-2.9-0.3-2.8-1.4-2.9-0.9-0.8-0.8-0.7-1.1-1.8-1.1-1.8-0.7-5.2-3.1-1.4-0.3-1.4-0.3-1.4-0.6-1.3-0.8 0.4-2-1.3-1.7-0.4-2.2 0.2-2.2-0.2-2.1 0.1-2.1 1-1.3 4.8-2.6 1.4-1.2 0.3-2.3-1.1-0.3-1.3-1.3-1.3-1.1-5.6-1.4-1.3-1.6-0.1-2.2 0.3-2.8 0.1-0.5 0.5-0.7 1.4-1.5 0.9-1.7-0.6-1.9 0.6-1.6 1.5-1 1.4-1.2 1.2-0.3 0.9-0.5 0.2-0.9 0.3-0.7 5.7-0.7z" id="TR29" name="Gümüshane">
+  </path>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══ RESULTS ZONE (right sidebar, spans rows 2-3) ═══ -->
+<div class="resultzone">
+  <div class="res-header">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--blue);box-shadow:0 0 8px rgba(37,99,235,.3)"></div>
+        <span style="font-size:16px;font-weight:900;color:var(--ink);letter-spacing:-.02em">Sonuçlar</span>
+      </div>
+      <span class="slbl" style="background:var(--blue-soft);color:var(--blue-dark);padding:3px 10px;border-radius:6px;font-size:9px">TBMM 600</span>
+    </div>
+  </div>
+  <div class="res-body" id="results">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:28px">
+      <div style="width:56px;height:56px;border-radius:14px;background:rgba(0,0,0,.03);display:flex;align-items:center;justify-content:center;margin-bottom:14px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--muted-lt)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      </div>
+      <div style="font-size:14px;font-weight:700;color:var(--ink-dim)">Veri bekleniyor</div>
+      <div style="font-size:11px;color:var(--muted-lt);margin-top:5px;line-height:1.5">Parti oy oranlarını girin ve<br><b style="color:var(--muted)">Simülasyonu Çalıştır</b> butonuna basın</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CONTROL ZONE (bottom, under map) ═══ -->
+<div class="ctrlzone" id="kontrol-paneli">
+  <div class="ctrl-header" id="provinceInspector">
+    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+      <div id="inspectorDefault" style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px;font-weight:800;color:var(--ink)">Parti Oy Oranları</span>
+        <span class="slbl" style="background:rgba(0,0,0,.04);padding:2px 8px;border-radius:4px">%</span>
+      </div>
+      <div id="inspectorActive" style="display:none;align-items:center;gap:10px;flex:1;min-width:0;overflow:hidden">
+        <span id="provinceInspectorTitle" class="pinsp-name" style="flex-shrink:0"></span>
+        <span id="provinceInspectorHint" class="pinsp-hint" style="flex-shrink:0"></span>
+        <div id="provinceInspectorBody" class="pinsp-data" style="flex:1;overflow:hidden"></div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button id="btnPinProvince" class="abtn" style="background:var(--blue);color:white;border-color:transparent;font-size:9px;padding:4px 8px">📌</button>
+          <button id="btnUnpinProvince" class="abtn" style="font-size:9px;padding:4px 8px">✕</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <button onclick="openPresModal()" class="abtn" style="font-size:10px;font-weight:800">CB Matrisi →</button>
+      <button onclick="openCreatePartyModal()" class="abtn" style="font-size:10px;font-weight:800;color:var(--ok);border-color:rgba(16,185,129,.2);background:rgba(16,185,129,.05)">+ Yeni Parti</button>
+    </div>
+  </div>
+  <div class="ctrl-body">
+    <div class="party-grid" id="parliamentary-inputs"></div>
+    <div class="ctrl-side">
+      <button onclick="calculateWrapper()" class="runbtn">Simülasyonu Çalıştır ▸</button>
+      <div style="font-size:9px;font-weight:600;color:var(--muted-lt);text-align:center;letter-spacing:.02em">Ctrl+Enter ile hızlı çalıştır</div>
+    </div>
+  </div>
+</div>
+</div><!-- shell -->
+
+<!-- ═══ PRESIDENTIAL MODAL ═══ -->
+<div id="presModal" class="hidden" style="position:fixed;inset:0;z-index:99990">
+  <div class="moverlay" onclick="if(event.target===this)closePresModal()">
+    <div class="mcard" style="max-width:760px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:900;color:var(--ink)">Cumhurbaşkanlığı Matrisi</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="addCandidate()" class="abtn" style="color:var(--blue)">+ Aday Ekle</button>
+          <button onclick="closePresModal()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1">✕</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px">
+        <div class="slbl" style="margin-bottom:8px">1. Tur — Parti Bazında Destek Oranları</div>
+        <div id="presidential-inputs" style="overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-md)"></div>
+        <div id="secondRoundDiv" class="hidden" style="margin-top:14px">
+          <div style="background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.2);border-radius:var(--r-md);padding:12px">
+            <div class="slbl" style="color:#92400e;margin-bottom:8px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:var(--warn)"></span>2. Tur Aktif</div>
+            <div id="second-round-inputs" style="overflow-x:auto"></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:10px 20px;border-top:1px solid var(--line);text-align:right">
+        <button onclick="closePresModal()" style="padding:8px 20px;border-radius:var(--r-sm);font-size:13px;font-weight:800;color:white;background:var(--blue);border:none;cursor:pointer">Tamam</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CREATE PARTY MODAL ═══ -->
+<div id="createPartyModal" class="hidden" style="position:fixed;inset:0;z-index:99990">
+  <div class="moverlay" onclick="if(event.target===this)document.getElementById('createPartyModal').classList.add('hidden')">
+    <div class="mcard" style="max-width:400px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:900;color:var(--ink)">Parti Oluştur</span>
+        <button onclick="document.getElementById('createPartyModal').classList.add('hidden')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px">✕</button>
+      </div>
+      <div style="padding:16px 20px">
+        <div style="margin-bottom:14px"><label class="slbl" style="display:block;margin-bottom:4px">Parti Kısaltması</label><input type="text" id="newPartyName" placeholder="Örn: YENİ" style="width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:14px;font-weight:800;background:rgba(0,0,0,.02);color:var(--ink);outline:none"></div>
+        <div style="margin-bottom:14px"><label class="slbl" style="display:block;margin-bottom:4px">Renk</label><input type="color" id="newPartyColor" value="#6366f1" style="width:48px;height:32px;border:none;border-radius:var(--r-sm);cursor:pointer"></div>
+        <div><label class="slbl" style="display:block;margin-bottom:6px">Taban Dağılımı (%)</label><div id="baseShareContainer" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:140px;overflow-y:auto"></div></div>
+      </div>
+      <div style="padding:10px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="document.getElementById('createPartyModal').classList.add('hidden')" class="abtn">Vazgeç</button>
+        <button onclick="submitNewParty()" style="padding:8px 18px;border-radius:var(--r-sm);font-size:13px;font-weight:800;color:white;background:var(--ok);border:none;cursor:pointer">Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ IO MODAL ═══ -->
+<div id="ioModal" class="hidden" style="position:fixed;inset:0;z-index:99990">
+  <div class="moverlay" onclick="if(event.target===this)document.getElementById('ioModal').classList.add('hidden')">
+    <div class="mcard" style="max-width:600px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:900;color:var(--ink)">İçe / Dışa Aktar</span>
+        <button id="btnCloseIO" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px">✕</button>
+      </div>
+      <div style="padding:16px 20px">
+        <textarea id="ioText" spellcheck="false" placeholder="{ ... }" style="width:100%;height:180px;border:1px solid var(--line);border-radius:var(--r-md);background:rgba(0,0,0,.02);padding:12px;font-family:var(--mono);font-size:10px;color:var(--ink);outline:none;resize:none"></textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+          <button id="btnCopyJSON" class="abtn" style="background:var(--blue);color:white;border-color:transparent">Kopyala</button>
+          <button id="btnApplyJSON" class="abtn" style="background:var(--ok);color:white;border-color:transparent">Uygula</button>
+          <button id="btnShareLink" class="abtn">Paylaşım Linki</button>
+          <button id="btnDownloadJSON" class="abtn">İndir</button>
+          <label class="abtn" style="cursor:pointer">Dosya Yükle<input id="fileImport" type="file" accept="application/json" style="display:none"></label>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toastHost" style="position:fixed;bottom:12px;right:12px;z-index:99999;display:flex;flex-direction:column;gap:5px"></div>
+<div id="tooltip" class="hidden"></div>
+<noscript><div style="padding:20px;text-align:center">JavaScript gerekli.</div></noscript>
+<script>
+function openPresModal(){document.getElementById('presModal').classList.remove('hidden')}
+function closePresModal(){document.getElementById('presModal').classList.add('hidden')}
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(typeof calculateWrapper==='function')calculateWrapper()}});
+</script>
+<script>
+// --- DATA ---
+const provinces = [
+    { id: "TR01", displayName: "Adana", mpCount: 15, defaultVotes: 1425851, ratios: { "CHP": 1.13, "AKP": 0.86, "MHP": 1.10, "IYIP": 1.11, "DEM": 1.10, "YRP": 0.63, "ZP": 0.94, "BBP": 0.93, "TIP": 1.33, "OTH": 0.82 } },
+    { id: "TR02", displayName: "Adıyaman", mpCount: 5, defaultVotes: 325797, ratios: { "CHP": 0.50, "AKP": 1.3, "MHP": 0.9, "IYIP": 0.61, "DEM": 1.37, "YRP": 1.70, "ZP": 0.27, "BBP": 1.01, "TIP": 0.00, "OTH": 0.72 } },
+    { id: "TR03", displayName: "Afyonkarahisar", mpCount: 6, defaultVotes: 487495, ratios: { "CHP": 0.73, "AKP": 1.25, "MHP": 1.62, "IYIP": 1.28, "DEM": 0.04, "YRP": 1.05, "ZP": 1.00, "BBP": 1.11, "TIP": 0.12, "OTH": 0.63 } },
+    { id: "TR04", displayName: "Ağrı", mpCount: 4, defaultVotes: 219575, ratios: { "CHP": 0.52, "AKP": 0.60, "MHP": 0.23, "IYIP": 0.17, "DEM": 6.37, "YRP": 0.70, "ZP": 0.00, "BBP": 0.29, "TIP": 0.00, "OTH": 1.09 } },
+    { id: "TR68", displayName: "Aksaray", mpCount: 4, defaultVotes: 259568, ratios: { "CHP": 0.48, "AKP": 1.24, "MHP": 2.11, "IYIP": 1.35, "DEM": 0.07, "YRP": 0.91, "ZP": 0.59, "BBP": 2.15, "TIP": 0.15, "OTH": 0.75 } },
+    { id: "TR05", displayName: "Amasya", mpCount: 3, defaultVotes: 238918, ratios: { "CHP": 1.18, "AKP": 1.12, "MHP": 1.69, "IYIP": 0.73, "DEM": 0.04, "YRP": 0.63, "ZP": 0.66, "BBP": 0.84, "TIP": 0.21, "OTH": 0.74 } },
+    { id: "TR06", displayName: "Ankara", mpCount: 36, defaultVotes: 3974000, ratios: { "CHP": 1.19, "AKP": 0.92, "MHP": 1.03, "IYIP": 1.32, "DEM": 0.33, "YRP": 0.96, "ZP": 1.50, "BBP": 1.31, "TIP": 0.70, "OTH": 0.98 } },
+    { id: "TR07", displayName: "Antalya", mpCount: 17, defaultVotes: 1718557, ratios: { "CHP": 1.28, "AKP": 0.81, "MHP": 0.99, "IYIP": 1.17, "DEM": 0.54, "YRP": 0.44, "ZP": 1.26, "BBP": 0.67, "TIP": 2.69, "OTH": 1.35 } },
+    { id: "TR75", displayName: "Ardahan", mpCount: 2, defaultVotes: 55757, ratios: { "CHP": 1.18, "AKP": 0.98, "MHP": 0.30, "IYIP": 0.49, "DEM": 2.48, "YRP": 0.35, "ZP": 0.46, "BBP": 0.35, "TIP": 0.00, "OTH": 1.48 } },
+    { id: "TR08", displayName: "Artvin", mpCount: 2, defaultVotes: 118006, ratios: { "CHP": 1.18, "AKP": 1.05, "MHP": 0.96, "IYIP": 1.35, "DEM": 0.10, "YRP": 0.83, "ZP": 0.52, "BBP": 0.39, "TIP": 0.88, "OTH": 1.56 } },
+    { id: "TR09", displayName: "Aydın", mpCount: 8, defaultVotes: 794724, ratios: { "CHP": 1.41, "AKP": 0.80, "MHP": 0.85, "IYIP": 1.33, "DEM": 0.82, "YRP": 0.25, "ZP": 0.99, "BBP": 0.87, "TIP": 0.00, "OTH": 1.26 } },
+    { id: "TR10", displayName: "Balıkesir", mpCount: 9, defaultVotes: 912072, ratios: { "CHP": 1.24, "AKP": 0.97, "MHP": 0.81, "IYIP": 1.51, "DEM": 0.23, "YRP": 0.73, "ZP": 0.92, "BBP": 0.69, "TIP": 0.71, "OTH": 1.22 } },
+    { id: "TR74", displayName: "Bartın", mpCount: 2, defaultVotes: 136225, ratios: { "CHP": 0.99, "AKP": 1.03, "MHP": 2.37, "IYIP": 0.68, "DEM": 0.04, "YRP": 0.62, "ZP": 0.64, "BBP": 0.46, "TIP": 0.00, "OTH": 1.72 } },
+    { id: "TR72", displayName: "Batman", mpCount: 5, defaultVotes: 336804, ratios: { "CHP": 0.34, "AKP": 0.71, "MHP": 0.11, "IYIP": 0.19, "DEM": 6.75, "YRP": 0.37, "ZP": 0.00, "BBP": 0.31, "TIP": 0.00, "OTH": 0.73 } },
+    { id: "TR69", displayName: "Bayburt", mpCount: 1, defaultVotes: 50739, ratios: { "CHP": 0.28, "AKP": 1.71, "MHP": 1.67, "IYIP": 0.95, "DEM": 0.05, "YRP": 1.05, "ZP": 0.60, "BBP": 0.74, "TIP": 0.11, "OTH": 0.58 } },
+    { id: "TR11", displayName: "Bilecik", mpCount: 2, defaultVotes: 155034, ratios: { "CHP": 1.05, "AKP": 1.05, "MHP": 1.03, "IYIP": 1.26, "DEM": 0.30, "YRP": 1.16, "ZP": 1.00, "BBP": 0.88, "TIP": 0.48, "OTH": 1.32 } },
+    { id: "TR12", displayName: "Bingöl", mpCount: 3, defaultVotes: 149706, ratios: { "CHP": 0.20, "AKP": 1.10, "MHP": 1.35, "IYIP": 0.20, "DEM": 2.78, "YRP": 3.55, "ZP": 0.00, "BBP": 0.55, "TIP": 0.00, "OTH": 0.90 } },
+    { id: "TR13", displayName: "Bitlis", mpCount: 3, defaultVotes: 179416, ratios: { "CHP": 0.34, "AKP": 0.95, "MHP": 0.36, "IYIP": 0.73, "DEM": 4.65, "YRP": 0.74, "ZP": 0.00, "BBP": 0.33, "TIP": 0.00, "OTH": 1.26 } },
+    { id: "TR14", displayName: "Bolu", mpCount: 3, defaultVotes: 218092, ratios: { "CHP": 0.86, "AKP": 1.04, "MHP": 2.35, "IYIP": 0.76, "DEM": 0.09, "YRP": 1.14, "ZP": 0.85, "BBP": 0.77, "TIP": 0.32, "OTH": 1.25 } },
+    { id: "TR15", displayName: "Burdur", mpCount: 3, defaultVotes: 185052, ratios: { "CHP": 1.23, "AKP": 1.03, "MHP": 1.41, "IYIP": 1.18, "DEM": 0.07, "YRP": 0.42, "ZP": 0.63, "BBP": 0.70, "TIP": 0.00, "OTH": 1.18 } },
+    { id: "TR16", displayName: "Bursa", mpCount: 20, defaultVotes: 2178279, ratios: { "CHP": 0.95, "AKP": 1.10, "MHP": 0.85, "IYIP": 1.22, "DEM": 0.49, "YRP": 1.27, "ZP": 1.63, "BBP": 0.77, "TIP": 0.39, "OTH": 1.29 } },
+    { id: "TR17", displayName: "Çanakkale", mpCount: 4, defaultVotes: 404374, ratios: { "CHP": 1.40, "AKP": 0.90, "MHP": 0.65, "IYIP": 1.69, "DEM": 0.22, "YRP": 0.34, "ZP": 0.89, "BBP": 0.44, "TIP": 0.72, "OTH": 1.30 } },
+    { id: "TR18", displayName: "Çankırı", mpCount: 2, defaultVotes: 127444, ratios: { "CHP": 0.24, "AKP": 1.19, "MHP": 3.14, "IYIP": 1.23, "DEM": 0.03, "YRP": 1.06, "ZP": 0.68, "BBP": 1.03, "TIP": 0.14, "OTH": 0.83 } },
+    { id: "TR19", displayName: "Çorum", mpCount: 4, defaultVotes: 366264, ratios: { "CHP": 0.87, "AKP": 1.13, "MHP": 2.03, "IYIP": 0.92, "DEM": 0.05, "YRP": 1.16, "ZP": 0.67, "BBP": 0.79, "TIP": 0.20, "OTH": 0.89 } },
+    { id: "TR20", displayName: "Denizli", mpCount: 7, defaultVotes: 733498, ratios: { "CHP": 1.26, "AKP": 0.95, "MHP": 0.83, "IYIP": 1.45, "DEM": 0.27, "YRP": 0.47, "ZP": 1.15, "BBP": 1.47, "TIP": 0.58, "OTH": 1.14 } },
+    { id: "TR21", displayName: "Diyarbakır", mpCount: 12, defaultVotes: 927507, ratios: { "CHP": 0.40, "AKP": 0.54, "MHP": 0.11, "IYIP": 0.23, "DEM": 7.13, "YRP": 0.55, "ZP": 0.00, "BBP": 0.21, "TIP": 0.00, "OTH": 0.83 } },
+    { id: "TR81", displayName: "Düzce", mpCount: 3, defaultVotes: 274727, ratios: { "CHP": 0.62, "AKP": 1.41, "MHP": 1.63, "IYIP": 0.71, "DEM": 0.11, "YRP": 1.37, "ZP": 0.96, "BBP": 0.92, "TIP": 0.25, "OTH": 1.32 } },
+    { id: "TR22", displayName: "Edirne", mpCount: 4, defaultVotes: 291184, ratios: { "CHP": 1.56, "AKP": 0.65, "MHP": 0.76, "IYIP": 2.12, "DEM": 0.20, "YRP": 0.23, "ZP": 0.66, "BBP": 0.23, "TIP": 0.61, "OTH": 1.33 } },
+    { id: "TR23", displayName: "Elazığ", mpCount: 5, defaultVotes: 368683, ratios: { "CHP": 0.81, "AKP": 1.14, "MHP": 1.14, "IYIP": 0.24, "DEM": 0.80, "YRP": 1.29, "ZP": 0.24, "BBP": 0.40, "TIP": 0.00, "OTH": 0.46 } },
+    { id: "TR24", displayName: "Erzincan", mpCount: 2, defaultVotes: 156354, ratios: { "CHP": 1.18, "AKP": 1.09, "MHP": 1.99, "IYIP": 0.41, "DEM": 0.12, "YRP": 0.51, "ZP": 0.42, "BBP": 0.37, "TIP": 0.14, "OTH": 0.47 } },
+    { id: "TR25", displayName: "Erzurum", mpCount: 6, defaultVotes: 444199, ratios: { "CHP": 0.25, "AKP": 1.22, "MHP": 1.68, "IYIP": 0.98, "DEM": 1.13, "YRP": 1.76, "ZP": 1.06, "BBP": 1.79, "TIP": 0.00, "OTH": 0.70 } },
+    { id: "TR26", displayName: "Eskişehir", mpCount: 6, defaultVotes: 635478, ratios: { "CHP": 1.35, "AKP": 0.93, "MHP": 0.72, "IYIP": 1.43, "DEM": 0.22, "YRP": 0.50, "ZP": 1.34, "BBP": 1.12, "TIP": 0.94, "OTH": 1.01 } },
+    { id: "TR27", displayName: "Gaziantep", mpCount: 14, defaultVotes: 1172245, ratios: { "CHP": 0.80, "AKP": 1.27, "MHP": 0.96, "IYIP": 0.55, "DEM": 1.03, "YRP": 1.46, "ZP": 1.46, "BBP": 0.70, "TIP": 0.00, "OTH": 0.93 } },
+    { id: "TR28", displayName: "Giresun", mpCount: 4, defaultVotes: 310189, ratios: { "CHP": 0.81, "AKP": 1.22, "MHP": 1.57, "IYIP": 1.31, "DEM": 0.03, "YRP": 0.87, "ZP": 0.68, "BBP": 0.59, "TIP": 0.25, "OTH": 0.93 } },
+    { id: "TR29", displayName: "Gümüşhane", mpCount: 2, defaultVotes: 80886, ratios: { "CHP": 0.28, "AKP": 1.34, "MHP": 2.66, "IYIP": 1.19, "DEM": 0.03, "YRP": 0.94, "ZP": 0.48, "BBP": 0.84, "TIP": 0.15, "OTH": 0.79 } },
+    { id: "TR30", displayName: "Hakkâri", mpCount: 3, defaultVotes: 15381, ratios: { "CHP": 0.29, "AKP": 0.46, "MHP": 0.27, "IYIP": 0.20, "DEM": 7.30, "YRP": 0.70, "ZP": 0.00, "BBP": 0.30, "TIP": 0.00, "OTH": 1.13 } },
+    { id: "TR31", displayName: "Hatay", mpCount: 11, defaultVotes: 894538, ratios: { "CHP": 1.13, "AKP": 0.95, "MHP": 1.22, "IYIP": 0.83, "DEM": 0.34, "YRP": 0.65, "ZP": 0.59, "BBP": 0.91, "TIP": 5.11, "OTH": 0.64 } },
+    { id: "TR76", displayName: "Iğdır", mpCount: 2, defaultVotes: 105142, ratios: { "CHP": 0.43, "AKP": 0.89, "MHP": 0.45, "IYIP": 0.67, "DEM": 5.09, "YRP": 0.16, "ZP": 0.00, "BBP": 0.20, "TIP": 0.00, "OTH": 0.98 } },
+    { id: "TR32", displayName: "Isparta", mpCount: 4, defaultVotes: 295575, ratios: { "CHP": 0.87, "AKP": 0.91, "MHP": 2.06, "IYIP": 1.69, "DEM": 0.08, "YRP": 0.64, "ZP": 0.86, "BBP": 0.54, "TIP": 0.18, "OTH": 0.98 } },
+    { id: "TR34", displayName: "İstanbul", mpCount: 98, defaultVotes: 10423250, ratios: { "CHP": 1.11, "AKP": 1.02, "MHP": 0.60, "IYIP": 0.84, "DEM": 0.92, "YRP": 1.18, "ZP": 1.25, "BBP": 0.81, "TIP": 2.35, "OTH": 0.95 } },
+    { id: "TR35", displayName: "İzmir", mpCount: 28, defaultVotes: 3144052, ratios: { "CHP": 1.63, "AKP": 0.70, "MHP": 0.51, "IYIP": 1.18, "DEM": 0.85, "YRP": 0.31, "ZP": 1.04, "BBP": 0.46, "TIP": 1.60, "OTH": 1.33 } },
+    { id: "TR46", displayName: "Kahramanmaraş", mpCount: 8, defaultVotes: 649242, ratios: { "CHP": 0.63, "AKP": 1.35, "MHP": 1.62, "IYIP": 0.72, "DEM": 0.13, "YRP": 1.94, "ZP": 0.76, "BBP": 1.60, "TIP": 0.00, "OTH": 0.92 } },
+    { id: "TR78", displayName: "Karabük", mpCount: 3, defaultVotes: 163577, ratios: { "CHP": 0.86, "AKP": 1.06, "MHP": 1.60, "IYIP": 1.00, "DEM": 0.04, "YRP": 2.95, "ZP": 0.93, "BBP": 0.43, "TIP": 0.19, "OTH": 1.33 } },
+    { id: "TR70", displayName: "Karaman", mpCount: 3, defaultVotes: 169319, ratios: { "CHP": 0.75, "AKP": 1.16, "MHP": 1.82, "IYIP": 1.12, "DEM": 0.06, "YRP": 0.80, "ZP": 0.83, "BBP": 2.73, "TIP": 0.16, "OTH": 1.11 } },
+    { id: "TR36", displayName: "Kars", mpCount: 3, defaultVotes: 146084, ratios: { "CHP": 0.64, "AKP": 0.71, "MHP": 0.96, "IYIP": 1.54, "DEM": 3.24, "YRP": 0.69, "ZP": 0.00, "BBP": 0.60, "TIP": 0.00, "OTH": 1.17 } },
+    { id: "TR37", displayName: "Kastamonu", mpCount: 3, defaultVotes: 260025, ratios: { "CHP": 0.85, "AKP": 1.29, "MHP": 1.51, "IYIP": 0.78, "DEM": 0.02, "YRP": 1.44, "ZP": 0.78, "BBP": 0.92, "TIP": 0.00, "OTH": 1.27 } },
+    { id: "TR38", displayName: "Kayseri", mpCount: 10, defaultVotes: 947321, ratios: { "CHP": 0.67, "AKP": 1.15, "MHP": 1.92, "IYIP": 1.03, "DEM": 0.09, "YRP": 1.24, "ZP": 1.44, "BBP": 1.94, "TIP": 0.22, "OTH": 0.71 } },
+    { id: "TR71", displayName: "Kırıkkale", mpCount: 3, defaultVotes: 182790, ratios: { "CHP": 1.05, "AKP": 0.99, "MHP": 2.14, "IYIP": 1.04, "DEM": 0.03, "YRP": 0.64, "ZP": 0.68, "BBP": 0.66, "TIP": 0.00, "OTH": 0.66 } },
+    { id: "TR39", displayName: "Kırklareli", mpCount: 3, defaultVotes: 269334, ratios: { "CHP": 1.81, "AKP": 0.70, "MHP": 0.46, "IYIP": 1.57, "DEM": 0.19, "YRP": 0.23, "ZP": 0.69, "BBP": 0.50, "TIP": 1.02, "OTH": 1.20 } },
+    { id: "TR40", displayName: "Kırşehir", mpCount: 2, defaultVotes: 153713, ratios: { "CHP": 1.16, "AKP": 1.09, "MHP": 1.49, "IYIP": 0.74, "DEM": 0.28, "YRP": 0.56, "ZP": 0.86, "BBP": 1.01, "TIP": 0.23, "OTH": 0.97 } },
+    { id: "TR79", displayName: "Kilis", mpCount: 2, defaultVotes: 86970, ratios: { "CHP": 0.79, "AKP": 1.11, "MHP": 2.71, "IYIP": 0.59, "DEM": 0.10, "YRP": 0.83, "ZP": 0.84, "BBP": 0.44, "TIP": 0.00, "OTH": 0.77 } },
+    { id: "TR41", displayName: "Kocaeli", mpCount: 14, defaultVotes: 1406439, ratios: { "CHP": 0.94, "AKP": 1.12, "MHP": 0.83, "IYIP": 0.98, "DEM": 0.64, "YRP": 2.06, "ZP": 1.40, "BBP": 1.14, "TIP": 0.00, "OTH": 1.17 } },
+    { id: "TR42", displayName: "Konya", mpCount: 15, defaultVotes: 1464705, ratios: { "CHP": 0.53, "AKP": 1.36, "MHP": 1.44, "IYIP": 0.89, "DEM": 0.29, "YRP": 1.82, "ZP": 1.32, "BBP": 2.07, "TIP": 0.19, "OTH": 0.85 } },
+    { id: "TR43", displayName: "Kütahya", mpCount: 5, defaultVotes: 398853, ratios: { "CHP": 0.65, "AKP": 1.32, "MHP": 1.31, "IYIP": 1.08, "DEM": 0.03, "YRP": 2.53, "ZP": 0.76, "BBP": 1.20, "TIP": 0.15, "OTH": 1.00 } },
+    { id: "TR44", displayName: "Malatya", mpCount: 6, defaultVotes: 439874, ratios: { "CHP": 0.85, "AKP": 1.28, "MHP": 1.29, "IYIP": 0.40, "DEM": 0.34, "YRP": 3.31, "ZP": 0.50, "BBP": 1.37, "TIP": 0.00, "OTH": 0.56 } },
+    { id: "TR45", displayName: "Manisa", mpCount: 10, defaultVotes: 1021696, ratios: { "CHP": 1.16, "AKP": 0.88, "MHP": 1.41, "IYIP": 1.14, "DEM": 0.64, "YRP": 0.54, "ZP": 0.99, "BBP": 1.35, "TIP": 0.00, "OTH": 1.16 } },
+    { id: "TR47", displayName: "Mardin", mpCount: 6, defaultVotes: 447155, ratios: { "CHP": 0.36, "AKP": 0.60, "MHP": 0.32, "IYIP": 0.11, "DEM": 6.39, "YRP": 0.39, "ZP": 0.21, "BBP": 0.15, "TIP": 0.00, "OTH": 0.66 } },
+    { id: "TR33", displayName: "Mersin", mpCount: 13, defaultVotes: 1247906, ratios: { "CHP": 1.22, "AKP": 0.69, "MHP": 1.19, "IYIP": 1.22, "DEM": 1.52, "YRP": 0.31, "ZP": 0.81, "BBP": 0.45, "TIP": 1.16, "OTH": 0.83 } },
+    { id: "TR48", displayName: "Muğla", mpCount: 7, defaultVotes: 733210, ratios: { "CHP": 1.49, "AKP": 0.68, "MHP": 0.61, "IYIP": 1.76, "DEM": 0.38, "YRP": 0.21, "ZP": 0.74, "BBP": 0.28, "TIP": 3.33, "OTH": 1.29 } },
+    { id: "TR49", displayName: "Muş", mpCount: 3, defaultVotes: 190130, ratios: { "CHP": 0.32, "AKP": 0.52, "MHP": 0.95, "IYIP": 0.57, "DEM": 5.87, "YRP": 1.00, "ZP": 0.00, "BBP": 0.36, "TIP": 0.00, "OTH": 1.07 } },
+    { id: "TR50", displayName: "Nevşehir", mpCount: 3, defaultVotes: 206089, ratios: { "CHP": 0.68, "AKP": 1.11, "MHP": 2.05, "IYIP": 1.63, "DEM": 0.05, "YRP": 0.71, "ZP": 0.57, "BBP": 0.91, "TIP": 0.22, "OTH": 0.70 } },
+    { id: "TR51", displayName: "Niğde", mpCount: 3, defaultVotes: 229919, ratios: { "CHP": 0.95, "AKP": 0.95, "MHP": 2.26, "IYIP": 1.26, "DEM": 0.05, "YRP": 0.93, "ZP": 0.65, "BBP": 0.56, "TIP": 0.12, "OTH": 0.77 } },
+    { id: "TR52", displayName: "Ordu", mpCount: 6, defaultVotes: 517310, ratios: { "CHP": 0.95, "AKP": 1.28, "MHP": 1.27, "IYIP": 1.01, "DEM": 0.02, "YRP": 0.81, "ZP": 0.62, "BBP": 0.83, "TIP": 0.20, "OTH": 1.14 } },
+    { id: "TR80", displayName: "Osmaniye", mpCount: 4, defaultVotes: 343352, ratios: { "CHP": 0.67, "AKP": 0.92, "MHP": 2.88, "IYIP": 1.30, "DEM": 0.23, "YRP": 0.69, "ZP": 0.76, "BBP": 0.57, "TIP": 0.16, "OTH": 0.64 } },
+    { id: "TR53", displayName: "Rize", mpCount: 3, defaultVotes: 239449, ratios: { "CHP": 0.61, "AKP": 1.53, "MHP": 1.30, "IYIP": 0.61, "DEM": 0.03, "YRP": 1.81, "ZP": 0.77, "BBP": 1.61, "TIP": 0.17, "OTH": 1.28 } },
+    { id: "TR54", displayName: "Sakarya", mpCount: 8, defaultVotes: 728366, ratios: { "CHP": 0.63, "AKP": 1.34, "MHP": 1.20, "IYIP": 1.13, "DEM": 0.17, "YRP": 1.78, "ZP": 1.18, "BBP": 0.93, "TIP": 0.30, "OTH": 1.13 } },
+    { id: "TR55", displayName: "Samsun", mpCount: 9, defaultVotes: 922027, ratios: { "CHP": 0.77, "AKP": 1.20, "MHP": 1.43, "IYIP": 1.24, "DEM": 0.03, "YRP": 1.42, "ZP": 0.97, "BBP": 1.40, "TIP": 0.36, "OTH": 1.06 } },
+    { id: "TR56", displayName: "Siirt", mpCount: 3, defaultVotes: 165723, ratios: { "CHP": 0.38, "AKP": 0.91, "MHP": 0.36, "IYIP": 0.14, "DEM": 5.45, "YRP": 0.41, "ZP": 0.00, "BBP": 0.28, "TIP": 0.00, "OTH": 0.86 } },
+    { id: "TR57", displayName: "Sinop", mpCount: 2, defaultVotes: 149795, ratios: { "CHP": 1.01, "AKP": 1.20, "MHP": 0.90, "IYIP": 0.97, "DEM": 0.04, "YRP": 0.79, "ZP": 0.66, "BBP": 4.56, "TIP": 0.44, "OTH": 1.53 } },
+    { id: "TR58", displayName: "Sivas", mpCount: 5, defaultVotes: 417831, ratios: { "CHP": 0.63, "AKP": 1.14, "MHP": 1.82, "IYIP": 0.75, "DEM": 0.05, "YRP": 1.22, "ZP": 0.80, "BBP": 10.37, "TIP": 0.22, "OTH": 0.52 } },
+    { id: "TR63", displayName: "Şanlıurfa", mpCount: 14, defaultVotes: 989154, ratios: { "CHP": 0.40, "AKP": 1.12, "MHP": 0.93, "IYIP": 0.47, "DEM": 2.88, "YRP": 1.04, "ZP": 0.00, "BBP": 0.44, "TIP": 0.00, "OTH": 0.65 } },
+    { id: "TR73", displayName: "Şırnak", mpCount: 4, defaultVotes: 274055, ratios: { "CHP": 0.42, "AKP": 0.49, "MHP": 0.22, "IYIP": 0.11, "DEM": 7.34, "YRP": 0.20, "ZP": 0.50, "BBP": 0.14, "TIP": 0.00, "OTH": 0.72 } },
+    { id: "TR59", displayName: "Tekirdağ", mpCount: 8, defaultVotes: 784712, ratios: { "CHP": 1.44, "AKP": 0.86, "MHP": 0.63, "IYIP": 1.15, "DEM": 0.69, "YRP": 0.56, "ZP": 1.02, "BBP": 0.54, "TIP": 0.91, "OTH": 1.23 } },
+    { id: "TR60", displayName: "Tokat", mpCount: 5, defaultVotes: 404105, ratios: { "CHP": 0.81, "AKP": 1.05, "MHP": 2.23, "IYIP": 1.14, "DEM": 0.03, "YRP": 0.82, "ZP": 0.62, "BBP": 2.90, "TIP": 0.18, "OTH": 0.56 } },
+    { id: "TR61", displayName: "Trabzon", mpCount: 6, defaultVotes: 551548, ratios: { "CHP": 0.70, "AKP": 1.36, "MHP": 1.08, "IYIP": 1.25, "DEM": 0.03, "YRP": 1.61, "ZP": 0.82, "BBP": 1.57, "TIP": 0.15, "OTH": 0.80 } },
+    { id: "TR62", displayName: "Tunceli", mpCount: 1, defaultVotes: 57941, ratios: { "CHP": 1.28, "AKP": 0.35, "MHP": 0.54, "IYIP": 0.22, "DEM": 5.00, "YRP": 0.34, "ZP": 0.00, "BBP": 0.30, "TIP": 0.00, "OTH": 1.27 } },
+    { id: "TR64", displayName: "Uşak", mpCount: 3, defaultVotes: 256154, ratios: { "CHP": 1.15, "AKP": 1.01, "MHP": 0.93, "IYIP": 1.81, "DEM": 0.15, "YRP": 0.50, "ZP": 0.72, "BBP": 0.66, "TIP": 0.20, "OTH": 1.10 } },
+    { id: "TR65", displayName: "Van", mpCount: 8, defaultVotes: 547884, ratios: { "CHP": 0.35, "AKP": 0.62, "MHP": 0.48, "IYIP": 0.20, "DEM": 6.18, "YRP": 1.11, "ZP": 0.34, "BBP": 0.85, "TIP": 0.00, "OTH": 0.84 } },
+    { id: "TR77", displayName: "Yalova", mpCount: 3, defaultVotes: 180313, ratios: { "CHP": 1.14, "AKP": 0.96, "MHP": 1.13, "IYIP": 0.98, "DEM": 0.64, "YRP": 0.75, "ZP": 1.02, "BBP": 0.65, "TIP": 0.59, "OTH": 1.94 } },
+    { id: "TR66", displayName: "Yozgat", mpCount: 4, defaultVotes: 263928, ratios: { "CHP": 0.56, "AKP": 1.23, "MHP": 2.33, "IYIP": 0.96, "DEM": 0.04, "YRP": 1.55, "ZP": 0.58, "BBP": 1.67, "TIP": 0.11, "OTH": 0.75 } },
+    { id: "TR67", displayName: "Zonguldak", mpCount: 5, defaultVotes: 405528, ratios: { "CHP": 1.27, "AKP": 1.13, "MHP": 0.83, "IYIP": 1.03, "DEM": 0.04, "YRP": 0.89, "ZP": 0.80, "BBP": 0.87, "TIP": 0.26, "OTH": 1.43 } }
+];
+
+let parties=["CHP","AKP","MHP","IYIP","DEM","YRP","ZP","BBP","TIP","OTH"];
+let partyColors={"CHP":"#E5252A","AKP":"#FFC72C","MHP":"#005B9A","IYIP":"#40E0D0","DEM":"#800080","YRP":"#008000","ZP":"#111827","BBP":"#FFC0CB","TIP":"#B22222","OTH":"#808080"};
+const candidateColorsArray=["#FF6384","#FFCE56","#36A2EB","#4BC0C0","#9966FF","#FF9F40","#C9CBCF"];
+const MODE_LABELS={parliamentary:'Parlamento',pres1:'CB 1. Tur',pres2:'CB 2. Tur'};
+let activeModes=new Set(['parliamentary']);
+let electionMode="parliamentary"; // compat
+let candidateColorMapping={},provinceResultsStore=[];
+let presidentialResultsStore={round1:[],round2:[]},normalizedNationalVotes={};
+
+/* ── District map data ── */
+const DATA_BASE=''; // relative to current page unless overridden
+let mapGranularity='province'; // 'province' | 'district'
+let districtGeoJSON=null; // loaded on demand
+let districtRatiosData=null; // loaded on demand
+let districtRatioIndex=null;
+
+/* Province code → name for matching GeoJSON network field to election data */
+const PROV_CODE_NAME=Object.fromEntries(provinces.map(p=>[p.id,p.displayName]));
+
+function normTR(s){
+  return String(s??'')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g,'')
+    .replace(/ı/g,'i').replace(/İ/g,'i')
+    .replace(/ş/g,'s').replace(/Ş/g,'s')
+    .replace(/ğ/g,'g').replace(/Ğ/g,'g')
+    .replace(/ü/g,'u').replace(/Ü/g,'u')
+    .replace(/ö/g,'o').replace(/Ö/g,'o')
+    .replace(/ç/g,'c').replace(/Ç/g,'c')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ')
+    .trim();
+}
+function canonProvinceName(s){
+  const t=normTR(s)
+    .replace(/\bil\b/g,' ')
+    .replace(/\bprovince\b/g,' ')
+    .replace(/\bsehir\b/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  return t;
+}
+function canonDistrictName(s){
+  let t=normTR(s)
+    .replace(/\b(merkez ilce|merkezilce|merkez ilcesi|merkez ilcesı)\b/g,' merkez ')
+    .replace(/\b(ilce|ilcesi|ilces|district|county|belediyesi|belediye)\b/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  if(/ mer?kez$/.test(t) || t==='merkez') t='merkez';
+  return t;
+}
+function candidateProvinceNamesFromProps(props={}){
+  const raw=[
+    props.network,
+    props.province,props.prov_name,props.prov,props.city,props.il,
+    props.parent,props.parent_name,props.parentName,props.name_1,props.name1,props.shapeName
+  ].filter(Boolean);
+  const out=new Set();
+  raw.forEach(v=>{
+    const s=String(v);
+    out.add(canonProvinceName(s));
+    if(s.includes('-')) out.add(canonProvinceName(s.split('-')[0]));
+    if(PROV_CODE_NAME[s]) out.add(canonProvinceName(PROV_CODE_NAME[s]));
+    const m=s.match(/TR\s*0?(\d{1,2})/i);
+    if(m){
+      const code='TR'+String(m[1]).padStart(2,'0');
+      if(PROV_CODE_NAME[code]) out.add(canonProvinceName(PROV_CODE_NAME[code]));
+    }
+  });
+  return [...out].filter(Boolean);
+}
+function buildDistrictRatioIndex(){
+  const empty={exact:new Map(),byDistrict:new Map()};
+  if(!districtRatiosData?.districts) return empty;
+  const exact=new Map(), byDistrict=new Map();
+  for(const [key,val] of Object.entries(districtRatiosData.districts)){
+    const city=val?.city || key.split('|')[0] || '';
+    const district=val?.district || key.split('|')[1] || '';
+    const pc=canonProvinceName(city);
+    const dc=canonDistrictName(district);
+    if(pc&&dc) exact.set(`${pc}|${dc}`, val);
+    if(dc){
+      if(!byDistrict.has(dc)) byDistrict.set(dc, []);
+      byDistrict.get(dc).push(val);
+    }
+  }
+  return {exact,byDistrict};
+}
+
+function normalizeAdminLevel(v){
+  const s=String(v??'').trim().toLowerCase();
+  return s.replace(/^level\s*/,'');
+}
+
+function getFeatureBBox(f){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity,ok=false;
+  (function walk(coords){
+    if(!Array.isArray(coords)) return;
+    if(typeof coords[0]==='number'&&typeof coords[1]==='number'){
+      const x=coords[0],y=coords[1];
+      if(Number.isFinite(x)&&Number.isFinite(y)){
+        if(x<minX) minX=x;
+        if(x>maxX) maxX=x;
+        if(y<minY) minY=y;
+        if(y>maxY) maxY=y;
+        ok=true;
+      }
+      return;
+    }
+    coords.forEach(walk);
+  })(f?.geometry?.coordinates);
+  if(!ok) return null;
+  return {minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY,area:Math.max(0,(maxX-minX)*(maxY-minY))};
+}
+function quantileSorted(arr,q){
+  if(!arr.length) return 0;
+  const pos=(arr.length-1)*q;
+  const base=Math.floor(pos);
+  const rest=pos-base;
+  const a=arr[base],b=arr[Math.min(base+1,arr.length-1)];
+  return a+(b-a)*rest;
+}
+function extractGeometryPoints(geometry){
+  const pts=[];
+  (function walk(coords){
+    if(!Array.isArray(coords)) return;
+    if(typeof coords[0]==='number'&&typeof coords[1]==='number'){
+      const x=coords[0],y=coords[1];
+      if(Number.isFinite(x)&&Number.isFinite(y)) pts.push([x,y]);
+      return;
+    }
+    coords.forEach(walk);
+  })(geometry?.coordinates);
+  return pts;
+}
+function mapCoordsDeep(coords,fn){
+  if(!Array.isArray(coords)) return coords;
+  if(typeof coords[0]==='number'&&typeof coords[1]==='number') return fn(coords);
+  return coords.map(c=>mapCoordsDeep(c,fn));
+}
+function cloneFeatureWithCoords(f,newCoords){
+  return {
+    type:'Feature',
+    properties:{...(f.properties||{})},
+    geometry:{type:f.geometry.type,coordinates:newCoords}
+  };
+}
+function scoreTurkeyPoints(points){
+  // loose Turkey envelope in lon/lat
+  const LON_MIN=25, LON_MAX=46.8, LAT_MIN=35, LAT_MAX=43.5;
+  if(!points.length) return {inside:0,total:0,bbox:null};
+  let inside=0,minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const [x,y] of points){
+    if(x>=LON_MIN&&x<=LON_MAX&&y>=LAT_MIN&&y<=LAT_MAX) inside++;
+    if(x<minX) minX=x; if(x>maxX) maxX=x;
+    if(y<minY) minY=y; if(y>maxY) maxY=y;
+  }
+  return {inside,total:points.length,bbox:{minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY,area:Math.max(0,(maxX-minX)*(maxY-minY))}};
+}
+function normalizeDistrictFeatureGeometry(f){
+  const pts=extractGeometryPoints(f?.geometry);
+  if(!pts.length) return null;
+  const raw=scoreTurkeyPoints(pts);
+  const swappedPts=pts.map(([x,y])=>[y,x]);
+  const swp=scoreTurkeyPoints(swappedPts);
+
+  // choose the orientation that actually looks like Turkey lon/lat and has plausible district extent
+  const rawPlausible = raw.bbox && raw.bbox.width<=4.5 && raw.bbox.height<=4.5;
+  const swpPlausible = swp.bbox && swp.bbox.width<=4.5 && swp.bbox.height<=4.5;
+  const rawFrac = raw.total ? raw.inside/raw.total : 0;
+  const swpFrac = swp.total ? swp.inside/swp.total : 0;
+
+  let useSwap=false;
+  if(swpFrac>rawFrac+0.2) useSwap=true;
+  else if(!rawPlausible && swpPlausible) useSwap=true;
+  else if(raw.inside===0 && swp.inside>0) useSwap=true;
+
+  const feature = useSwap
+    ? cloneFeatureWithCoords(f,mapCoordsDeep(f.geometry.coordinates,([x,y])=>[y,x]))
+    : f;
+  const bbox = useSwap ? swp.bbox : raw.bbox;
+  const frac = useSwap ? swpFrac : rawFrac;
+  return {feature,bbox,insideFraction:frac,insideCount:useSwap?swp.inside:raw.inside,totalCount:useSwap?swp.total:raw.total,swapped:useSwap};
+}
+function splitGeometryIntoPolygons(geometry){
+  if(!geometry||!geometry.coordinates) return [];
+  if(geometry.type==='Polygon') return [geometry.coordinates];
+  if(geometry.type==='MultiPolygon') return geometry.coordinates;
+  return [];
+}
+function polygonBBox(poly){
+  const pts=extractGeometryPoints({type:'Polygon',coordinates:poly});
+  const s=scoreTurkeyPoints(pts);
+  return {pts,bbox:s.bbox,inside:s.inside,total:s.total};
+}
+function sanitizeNormalizedDistrictFeature(norm){
+  const feature=norm?.feature;
+  if(!feature?.geometry) return null;
+  const polys=splitGeometryIntoPolygons(feature.geometry);
+  if(!polys.length) return null;
+
+  const kept=[];
+  for(const poly of polys){
+    if(!Array.isArray(poly)||!poly.length) continue;
+    const outer=Array.isArray(poly[0]) ? poly[0] : null;
+    if(!outer||outer.length<4) continue;
+    const {bbox,inside,total}=polygonBBox(poly);
+    if(!bbox) continue;
+    const insideFrac=total?inside/total:0;
+    const intersectsTurkey=bbox.maxX>=25 && bbox.minX<=46.8 && bbox.maxY>=35 && bbox.minY<=43.5;
+    if(!intersectsTurkey) continue;
+    if(!(bbox.width>0&&bbox.height>0)) continue;
+    if(bbox.width>3.2 || bbox.height>3.2) continue;
+    if(bbox.area>1.8) continue;
+    if(inside===0 && insideFrac<0.02) continue;
+
+    const shellBBox=polygonBBox([outer]).bbox;
+    const rings=poly.filter((ring,idx)=>{
+      if(!Array.isArray(ring)||ring.length<4) return false;
+      const rb=polygonBBox([ring]).bbox;
+      if(!rb) return false;
+      if(idx===0) return true;
+      return rb.minX>=shellBBox.minX-0.05 && rb.maxX<=shellBBox.maxX+0.05 && rb.minY>=shellBBox.minY-0.05 && rb.maxY<=shellBBox.maxY+0.05;
+    });
+    if(rings.length) kept.push(rings);
+  }
+  if(!kept.length) return null;
+
+  const geom=kept.length===1 ? {type:'Polygon',coordinates:kept[0]} : {type:'MultiPolygon',coordinates:kept};
+  const pts=extractGeometryPoints(geom);
+  const score=scoreTurkeyPoints(pts);
+  if(!score.bbox) return null;
+  return {feature:{type:'Feature',properties:{...(feature.properties||{})},geometry:geom},bbox:score.bbox,insideCount:score.inside,totalCount:score.total,insideFraction:score.total?score.inside/score.total:0};
+}
+function getRenderableDistrictFeatures(){
+  const districtHints=new Set(['6','7','8','district','ilce','ilçe','subprovince','sub-provincial','municipality','belediye']);
+  const all=(districtGeoJSON?.features||[]).filter(f=>{
+    if(!(f&&f.geometry&&(f.geometry.type==='Polygon'||f.geometry.type==='MultiPolygon')&&f.properties&&String(f.properties.name||'').trim())) return false;
+    const lvl=normalizeAdminLevel(f.properties?.admin_level);
+    return !lvl || districtHints.has(lvl);
+  });
+  if(!all.length) return [];
+
+  const normalized=all.map(normalizeDistrictFeatureGeometry).filter(Boolean);
+  if(!normalized.length) return [];
+
+  let cleaned=normalized.map(sanitizeNormalizedDistrictFeature).filter(Boolean);
+  if(!cleaned.length) return [];
+
+  const widths=cleaned.map(x=>x.bbox.width).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  const heights=cleaned.map(x=>x.bbox.height).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  const areas=cleaned.map(x=>x.bbox.area).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);
+  if(!widths.length||!heights.length||!areas.length) return cleaned.map(x=>x.feature);
+
+  const p99W=quantileSorted(widths,0.99), p99H=quantileSorted(heights,0.99), p99A=quantileSorted(areas,0.99);
+  const capW=Math.max(0.9,p99W*2.2);
+  const capH=Math.max(0.9,p99H*2.2);
+  const capA=Math.max(0.25,p99A*4.5);
+  let statFiltered=cleaned.filter(({bbox})=>bbox.width<=capW&&bbox.height<=capH&&bbox.area<=capA);
+  if(statFiltered.length<Math.max(250,Math.floor(cleaned.length*0.7))) statFiltered=cleaned;
+  return statFiltered.map(x=>x.feature);
+}
+async function loadDistrictData(){
+  if(districtGeoJSON&&districtRatiosData&&districtRatioIndex) return true;
+  try{
+    const geoURL=new URL(`${DATA_BASE}district_clean.geojson`, document.baseURI).href;
+    console.log('[İlçe] Fetching district_clean.geojson:', geoURL);
+    const geoRes=await fetch(geoURL,{cache:'no-store'});
+    if(!geoRes.ok) throw new Error(`GeoJSON fetch failed: ${geoRes.status} @ ${geoRes.url}`);
+    districtGeoJSON=await geoRes.json();
+    console.log(`[İlçe] GeoJSON loaded: ${districtGeoJSON.features.length} total features`);
+    const valid=districtGeoJSON.features.filter(f=>f.geometry&&f.properties&&f.properties.admin_level);
+    const renderable=getRenderableDistrictFeatures();
+    console.log(`[İlçe] Features with admin_level: ${valid.length}`);
+    console.log(`[İlçe] Renderable district features: ${renderable.length}`);
+  }catch(e){console.error('[İlçe] GeoJSON load failed:',e);return false}
+  try{
+    const ratURL=new URL(`${DATA_BASE}district_ratios.json`, document.baseURI).href;
+    console.log('[İlçe] Fetching district_ratios.json:', ratURL);
+    const ratRes=await fetch(ratURL,{cache:'no-store'});
+    const raw=await ratRes.text();
+    if(!ratRes.ok) throw new Error(`Ratios fetch failed: ${ratRes.status} @ ${ratRes.url}`);
+    const trimmed=raw.trim();
+    if(!(trimmed.startsWith('{')||trimmed.startsWith('['))) throw new Error(`Ratios response is not JSON @ ${ratRes.url}: ${trimmed.slice(0,160)}`);
+    districtRatiosData=JSON.parse(trimmed);
+    districtRatioIndex=buildDistrictRatioIndex();
+    console.log(`[İlçe] Ratios loaded: ${Object.keys(districtRatiosData.districts||{}).length} districts`);
+    console.log(`[İlçe] Indexed exact matches: ${districtRatioIndex.exact.size}`);
+  }catch(e){
+    console.warn('[İlçe] Ratios load failed, proceeding without:',e);
+    districtRatiosData={national_pct:{},provinces:{},districts:{}};
+    districtRatioIndex=buildDistrictRatioIndex();
+  }
+  return true;
+}
+
+function setMapGranularity(g){
+  console.log(`[İlçe] Switching to: ${g}`);
+  mapGranularity=g;
+  document.querySelectorAll('.map-toggle .mtgl').forEach(b=>b.classList.toggle('active',b.dataset.gran===g));
+  if(g==='district'){
+    loadDistrictData().then(ok=>{
+      console.log(`[İlçe] Load result: ${ok}, features: ${districtGeoJSON?.features?.length||0}`);
+      if(!ok){if(typeof showToast==='function')showToast('İlçe verisi yüklenemedi.','bad');mapGranularity='province';return}
+      rebuildMaps();updateMapColors();
+    });
+  }else{rebuildMaps();updateMapColors()}
+}
+
+/* ── District → ratio lookup ── */
+function getDistrictRatio(feat){
+  if(!districtRatiosData) return null;
+  if(!districtRatioIndex) districtRatioIndex=buildDistrictRatioIndex();
+  const props=feat?.properties||{};
+  const dCanon=canonDistrictName(props.name||props.district||'');
+  if(!dCanon) return null;
+  const provCandidates=candidateProvinceNamesFromProps(props);
+  for(const pCanon of provCandidates){
+    const hit=districtRatioIndex.exact.get(`${pCanon}|${dCanon}`);
+    if(hit) return hit;
+  }
+  const fallback=districtRatioIndex.byDistrict.get(dCanon)||[];
+  if(fallback.length===1) return fallback[0];
+  return null;
+}
+
+const tooltip=document.getElementById("tooltip"),resultsDiv=document.getElementById("results");
+const parliamentaryInputsDiv=document.getElementById('parliamentary-inputs');
+const presidentialInputsDiv=document.getElementById('presidential-inputs');
+const secondRoundDiv=document.getElementById('secondRoundDiv'),secondRoundInputsDiv=document.getElementById('second-round-inputs');
+
+document.addEventListener("DOMContentLoaded",()=>{
+  if(!provinces.length){alert("Province data missing.");return}
+  renderParliamentaryInputs();renderPresidentialInputs();rebuildMaps();
+});
+
+/* ── Mode toggle ── */
+function toggleMode(mode){
+  if(activeModes.has(mode)){
+    if(activeModes.size<=1)return; // must keep at least 1
+    activeModes.delete(mode);
+  }else{activeModes.add(mode)}
+  electionMode=[...activeModes][0]; // compat
+  // Update tab buttons
+  document.querySelectorAll('.btn-mode').forEach(b=>{b.classList.toggle('active',activeModes.has(b.dataset.mode))});
+  rebuildMaps();
+  updateMapColors();
+}
+function switchElectionMode(m){activeModes.clear();activeModes.add(m);electionMode=m;document.querySelectorAll('.btn-mode').forEach(b=>{b.classList.toggle('active',activeModes.has(b.dataset.mode))});rebuildMaps();updateMapColors()}
+
+/* ── Map cloning ── */
+function rebuildMaps(){
+  const container=document.getElementById('mapsContainer');
+  const template=document.querySelector('#svgTemplate svg');
+  if(!container)return;
+  container.innerHTML='';
+  const modes=[...activeModes];
+  container.setAttribute('data-count',modes.length);
+  modes.forEach((mode)=>{
+    const panel=document.createElement('div');
+    panel.className='map-panel';
+    panel.dataset.mode=mode;
+    const granLabel=mapGranularity==='district'?' · İLÇE':'';
+    panel.innerHTML=`<div class="map-panel-label">${MODE_LABELS[mode]||mode}${granLabel}</div>`;
+
+    if(mapGranularity==='district'&&districtGeoJSON){
+      /* ── Manual district rendering (no D3 geo projection) ── */
+      let features=getRenderableDistrictFeatures();
+      console.log(`[İlçe] Rendering ${features.length} district polygons`);
+      const W=1000,H=422,PAD=12;
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+      svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+      svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+      svg.style.width='100%'; svg.style.height='100%'; svg.style.display='block';
+      panel.appendChild(svg);
+      if(!features.length){
+        const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x',String(W/2)); t.setAttribute('y',String(H/2));
+        t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','middle');
+        t.setAttribute('fill','var(--muted)');
+        t.setAttribute('style','font-family:var(--sans);font-size:14px;font-weight:700');
+        t.textContent='İlçe geometrisi bulunamadı';
+        svg.appendChild(t);
+        container.appendChild(panel);
+        return;
+      }
+
+      const allPts=features.flatMap(f=>extractGeometryPoints(f.geometry));
+      const scored=scoreTurkeyPoints(allPts);
+      const bbox=scored.bbox||{minX:25.5,maxX:45.0,minY:35.5,maxY:42.8};
+      const lonMin=Math.max(25.0, bbox.minX-0.2);
+      const lonMax=Math.min(46.8, bbox.maxX+0.2);
+      const latMin=Math.max(35.0, bbox.minY-0.2);
+      const latMax=Math.min(43.5, bbox.maxY+0.2);
+      const lonSpan=Math.max(1e-6, lonMax-lonMin);
+      const latSpan=Math.max(1e-6, latMax-latMin);
+      const scale=Math.min((W-PAD*2)/lonSpan, (H-PAD*2)/latSpan);
+      const drawW=lonSpan*scale, drawH=latSpan*scale;
+      const offX=(W-drawW)/2, offY=(H-drawH)/2;
+      const project=([lon,lat])=>[offX+(lon-lonMin)*scale, offY+(latMax-lat)*scale];
+
+      const geometryToPath=(geom)=>{
+        const polys=splitGeometryIntoPolygons(geom);
+        let d='';
+        for(const poly of polys){
+          if(!Array.isArray(poly)||!poly.length) continue;
+          for(const ring of poly){
+            if(!Array.isArray(ring)||ring.length<4) continue;
+            let started=false;
+            for(const pt of ring){
+              if(!Array.isArray(pt)||pt.length<2) continue;
+              const [x,y]=project(pt);
+              if(!Number.isFinite(x)||!Number.isFinite(y)) continue;
+              d+=`${started?'L':'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+              started=true;
+            }
+            if(started) d+='Z';
+          }
+        }
+        return d;
+      };
+
+      for(const feat of features){
+        const d=geometryToPath(feat.geometry);
+        if(!d) continue;
+        const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d',d);
+        path.setAttribute('data-district-name',feat.properties?.name||'');
+        path.setAttribute('data-network',feat.properties?.network||'');
+        path.setAttribute('fill','var(--map-fill)');
+        path.setAttribute('stroke','var(--map-stroke)');
+        path.setAttribute('stroke-width','.3');
+        path.style.vectorEffect='non-scaling-stroke';
+        path.style.cursor='pointer';
+        path.style.transition='fill .2s ease';
+        path.addEventListener('mouseover',e=>{
+          path.setAttribute('stroke','var(--ink)');
+          path.setAttribute('stroke-width','1.5');
+          path.style.filter='drop-shadow(0 2px 6px rgba(0,0,0,.15))';
+          handleDistrictMouseOver(e,feat,mode);
+        });
+        path.addEventListener('mousemove',handleMouseMove);
+        path.addEventListener('mouseout',()=>{
+          path.setAttribute('stroke','var(--map-stroke)');
+          path.setAttribute('stroke-width','.3');
+          path.style.filter='';
+          handleMouseOut();
+        });
+        svg.appendChild(path);
+      }
+    }else if(template){
+      /* ── Province SVG clone ── */
+      const svg=template.cloneNode(true);
+      panel.appendChild(svg);
+      svg.querySelectorAll('path').forEach(path=>{
+        const prov=provinces.find(p=>p.id===path.getAttribute('id'));
+        if(prov){
+          path.addEventListener("mouseover",e=>handleMouseOver(e,prov,mode));
+          path.addEventListener("mousemove",handleMouseMove);
+          path.addEventListener("mouseout",handleMouseOut);
+          path.addEventListener("click",()=>{if(typeof togglePin==='function')togglePin(prov)});
+          path.addEventListener("mouseenter",()=>{if(typeof updatePI==='function')updatePI(prov)});
+        }
+      });
+    }
+    container.appendChild(panel);
+  });
+}
+
+/* ── District tooltip ── */
+function handleDistrictMouseOver(e,feat,mode){
+  const ratio=getDistrictRatio(feat);
+  const name=feat.properties.name||'?';
+  const net=feat.properties.network||'';
+  const provCode=net.includes('-')?net.split('-')[0]:net;
+  const provName=PROV_CODE_NAME[provCode]||'';
+  const dk=document.documentElement.getAttribute('data-theme')==='dark';
+  let c=`<div style="padding:10px 14px;border-bottom:1px solid ${dk?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)'}">
+    <span style="font-weight:800;font-size:14px">${name}</span>
+    <span style="font-size:11px;color:var(--muted);margin-left:6px">${provName}</span></div>`;
+  if(ratio&&mode==='parliamentary'){
+    /* Compute local % from current national inputs × ratio */
+    const nat={};let natTot=0;
+    parties.forEach(p=>{const v=parseFloat(document.getElementById(`input_${p}`)?.value)||0;nat[p]=v;natTot+=v});
+    if(natTot>0){
+      c+=`<div style="padding:8px 14px">`;
+      const local=parties.map(p=>({p,pct:nat[p]*(ratio.ratios[p]||0)})).sort((a,b)=>b.pct-a.pct);
+      const locTot=local.reduce((s,x)=>s+x.pct,0);
+      local.forEach(d=>{
+        const norm=locTot>0?(d.pct/locTot*100):0;
+        if(norm>1.5)c+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0;font-size:12px"><div style="display:flex;align-items:center;gap:6px"><div style="width:6px;height:6px;border-radius:50%;background:${partyColors[d.p]}"></div><span style="font-weight:700">${d.p}</span></div><span style="font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums">${norm.toFixed(1)}%</span></div>`;
+      });
+      c+=`</div>`;
+    }else{c+=`<div style="padding:8px 14px;font-size:12px;color:var(--muted)">Ulusal oy girin</div>`}
+  }else if(!ratio){c+=`<div style="padding:8px 14px;font-size:12px;color:var(--muted)">Eşleşme yok</div>`}
+  tooltip.innerHTML=c;tooltip.style.display="block";tooltip.classList.remove('hidden');tooltip.style.opacity="1";
+  const r=e.clientX+15,b=e.clientY+15;tooltip.style.left=Math.min(r,window.innerWidth-250)+'px';tooltip.style.top=Math.min(b,window.innerHeight-200)+'px';
+}
+
+/* ── 5×2 party grid ── */
+function renderParliamentaryInputs(){
+  let h='';
+  parties.forEach(p=>{
+    h+=`<div class="pcell">
+      <div class="pdot" style="background:${partyColors[p]}"></div>
+      <div class="pname">${p}</div>
+      <input type="number" id="input_${p}" value="0" step="any" class="pinp" placeholder="0">
+      <button type="button" class="tgl" id="qualify_${p}_btn" onclick="toggleQualify('${p}')" ${p==='OTH'?'disabled style="opacity:.25;cursor:default"':''} aria-label="${p} baraj"></button>
+      <input type="checkbox" id="qualify_${p}" class="hidden" ${p==='OTH'?'disabled':''}>
+    </div>`;
+  });
+  parliamentaryInputsDiv.innerHTML=h;
+}
+function toggleQualify(p){const cb=document.getElementById(`qualify_${p}`),btn=document.getElementById(`qualify_${p}_btn`);if(!cb||cb.disabled)return;cb.checked=!cb.checked;btn.classList.toggle('on',cb.checked)}
+
+function renderPresidentialInputs(names=["Aday 1","Aday 2"]){
+  let t=document.createElement('table');t.className="ptbl";t.id="presidentialTable";
+  let th=t.createTHead(),hr=th.insertRow();
+  hr.innerHTML=`<th style="text-align:left;padding-left:8px;font-size:10px">Aday</th>`+parties.map(p=>`<th style="color:${partyColors[p]}">${p}</th>`).join('');
+  let tb=t.createTBody();names.forEach(n=>addCandidateRow(tb,n));
+  let sr=tb.insertRow();sr.id="sandigaRow";
+  sr.innerHTML=`<th style="text-align:left;font-size:9px;color:var(--muted-lt);padding-left:8px">Sandığa Gitmeyen %</th>`+parties.map(()=>`<td><input type="number" value="0" step="any"></td>`).join('');
+  presidentialInputsDiv.innerHTML='';presidentialInputsDiv.appendChild(t);
+}
+function renderSecondRoundInputs(cands){
+  let t=document.createElement('table');t.className="ptbl";t.id="secondRoundTable";
+  let th=t.createTHead(),hr=th.insertRow();
+  hr.innerHTML=`<th style="text-align:left;padding-left:8px">Aday</th>`+parties.map(p=>`<th style="color:${partyColors[p]}">${p}</th>`).join('');
+  let tb=t.createTBody();
+  cands.forEach(n=>{let r=tb.insertRow();r.innerHTML=`<th style="text-align:left"><input type="text" value="${n}" readonly></th>`+parties.map(()=>`<td><input type="number" value="0" step="any"></td>`).join('')});
+  let sr=tb.insertRow();sr.id="srSandigaRow";
+  sr.innerHTML=`<th style="text-align:left;font-size:9px;color:var(--muted-lt);padding-left:8px">Gitmeyen</th>`+parties.map(()=>`<td><input type="number" value="0" step="any"></td>`).join('');
+  secondRoundInputsDiv.innerHTML='';secondRoundInputsDiv.appendChild(t);secondRoundDiv.classList.remove('hidden');
+}
+function addCandidate(){addCandidateRow(document.querySelector("#presidentialTable tbody"),'',document.getElementById("sandigaRow"))}
+function addCandidateRow(tb,nm,bf=null){let r=tb.insertRow(bf?bf.rowIndex:-1);r.innerHTML=`<th style="text-align:left"><input type="text" value="${nm}" placeholder="Yeni Aday"></th>`+parties.map(()=>`<td><input type="number" value="0" step="any"></td>`).join('')}
+
+/* ── Map ── */
+function updateMapColors(){
+  const dfl=getComputedStyle(document.documentElement).getPropertyValue('--map-fill').trim()||'#cbd5e1';
+  document.querySelectorAll('.map-panel').forEach(panel=>{
+    const mode=panel.dataset.mode;
+    const paths=panel.querySelectorAll('path');
+
+    /* ── District-level coloring ── */
+    if(mapGranularity==='district'&&mode==='parliamentary'&&districtRatiosData){
+      const nat={};let natTot=0;
+      parties.forEach(p=>{const v=parseFloat(document.getElementById(`input_${p}`)?.value)||0;nat[p]=v;natTot+=v});
+      if(natTot<=0){paths.forEach(p=>p.style.fill=dfl);return}
+      paths.forEach(path=>{
+        const dName=path.getAttribute('data-district-name')||'';
+        const net=path.getAttribute('data-network')||'';
+        if(!dName){path.style.fill=dfl;return}
+        // Build a minimal feat-like object for lookup
+        const fakeFeat={properties:{name:dName,network:net,admin_level:'6'}};
+        const ratio=getDistrictRatio(fakeFeat);
+        if(!ratio){path.style.fill=dfl;return}
+        // Compute local weighted shares
+        let best={p:'',v:0},locTot=0;
+        parties.forEach(p=>{
+          const w=nat[p]*(ratio.ratios[p]||0);
+          locTot+=w;
+          if(w>best.v) best={p,v:w};
+        });
+        const bestPct=locTot>0?(best.v/locTot*100):0;
+        path.style.fill=adjustColor(partyColors[best.p]||dfl,bestPct);
+        path.style.opacity=1;
+      });
+      return;
+    }
+
+    /* ── Province-level coloring (existing logic) ── */
+    if(mode==="parliamentary"&&provinceResultsStore.length>0){
+      provinceResultsStore.forEach(r=>{const w=Object.entries(r.localPercentages).reduce((a,b)=>a[1]>b[1]?a:b);
+        const p=panel.querySelector(`[id="${r.province}"]`)||[...paths].find(x=>x.id===r.province);
+        if(p){p.style.fill=adjustColor(partyColors[w[0]]||dfl,w[1]);p.style.opacity=1}});
+    }else if(mode==='pres1'||mode==='pres2'){
+      const res=(mode==='pres1')?presidentialResultsStore.round1:presidentialResultsStore.round2;
+      if(!res||!res.length){paths.forEach(p=>p.style.fill=dfl);return}
+      provinces.forEach(prov=>{let w={n:'',v:-1},tot=0;
+        res.forEach(c=>{const v=c.presAbsoluteVotes[prov.id]||0;tot+=v;if(v>w.v)w={n:c.candidate,v}});
+        if(w.n){const el=[...paths].find(x=>x.id===prov.id);if(el)el.style.fill=adjustColor(candidateColorMapping[w.n]||dfl,tot>0?(w.v/tot*100):0)}});
+    }else{paths.forEach(p=>p.style.fill=dfl)}
+  });
+}
+
+/* ── Tooltip ── */
+function handleMouseOver(e,prov,mode){
+  if(!prov)return;const dk=document.documentElement.getAttribute('data-theme')==='dark';
+  let c=`<div style="padding:10px 14px;border-bottom:1px solid ${dk?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)'};display:flex;justify-content:space-between;align-items:center">
+    <span style="font-weight:800;font-size:14px">${prov.displayName}</span>
+    <div style="display:flex;align-items:center;gap:6px"><span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted)">MV ${prov.mpCount}</span><span style="font-size:9px;font-weight:700;color:var(--muted-lt);letter-spacing:.03em;text-transform:uppercase">${MODE_LABELS[mode]||''}</span></div></div>`;
+  if(mode==='parliamentary'){
+    const pr=provinceResultsStore.find(r=>r.province===prov.id);
+    if(pr){c+=`<div style="padding:8px 14px">`;Object.entries(pr.localPercentages).sort((a,b)=>b[1]-a[1]).forEach(([p,pct])=>{if(pct>1.5){const s=pr.seatsAllocated[p];c+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0;font-size:12px;color:${s>0?'var(--ink)':'var(--muted-lt)'}"><div style="display:flex;align-items:center;gap:6px"><div style="width:6px;height:6px;border-radius:50%;background:${partyColors[p]}"></div><span style="font-weight:700">${p}</span></div><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums">${pct.toFixed(1)}%</span>${s>0?`<span style="font-family:var(--mono);font-size:9px;font-weight:800;background:var(--blue);color:white;padding:1px 6px;border-radius:4px">${s}</span>`:''}</div></div>`}});c+=`</div>`}
+    else{c+=`<div style="padding:8px 14px;font-size:12px;color:var(--muted)">Hesaplanmadı</div>`}
+  }else{
+    const pres=(mode==='pres2'&&presidentialResultsStore.round2.length>0)?presidentialResultsStore.round2:presidentialResultsStore.round1;
+    if(pres.length>0){c+=`<div style="padding:8px 14px">`;const tot=pres.reduce((s,x)=>s+(x.presAbsoluteVotes[prov.id]||0),0);pres.sort((a,b)=>(b.presAbsoluteVotes[prov.id]||0)-(a.presAbsoluteVotes[prov.id]||0)).forEach(x=>{const vs=tot>0?((x.presAbsoluteVotes[prov.id]||0)/tot*100):0;if(vs>1)c+=`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0"><span style="color:var(--ink-dim)">${x.candidate}</span><span style="font-family:var(--mono);font-weight:700;color:var(--blue)">${vs.toFixed(1)}%</span></div>`});c+=`</div>`}
+    else{c+=`<div style="padding:8px 14px;font-size:12px;color:var(--muted)">Hesaplanmadı</div>`}
+  }
+  tooltip.innerHTML=c;tooltip.style.display="block";tooltip.classList.remove('hidden');tooltip.style.opacity="1";
+}
+function handleMouseMove(e){const x=e.clientX,y=e.clientY,o=14;let l=x+o,t=y+o;if(l+210>window.innerWidth)l=x-210-o;if(t+(tooltip.offsetHeight||130)>window.innerHeight)t=y-(tooltip.offsetHeight||130)-o;tooltip.style.left=l+'px';tooltip.style.top=t+'px'}
+function handleMouseOut(){tooltip.style.opacity="0";setTimeout(()=>tooltip.classList.add('hidden'),120)}
+
+/* ── Calculations ── */
+function calculateWrapper(){
+  let ni={},ti=0;parties.forEach(p=>{const v=parseFloat(document.getElementById(`input_${p}`).value)||0;ni[p]=v;ti+=v});
+  if(ti===0){resultsDiv.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:24px"><div style="font-size:14px;font-weight:700;color:var(--warn)">Veri Girişi Eksik</div><div style="font-size:11px;color:var(--muted-lt);margin-top:4px">Lütfen parti oranlarını giriniz</div></div>`;return}
+  const pv={};provinces.forEach(p=>{pv[p.id]=p.defaultVotes||0});
+  normalizedNationalVotes={};parties.forEach(p=>{normalizedNationalVotes[p]=ni[p]/ti});
+  calculateParliamentary(pv);
+  const{candidates:c1,isRunoff}=calculatePresidential(1,pv);presidentialResultsStore.round1=c1;
+  presidentialResultsStore.round2=[];
+  if(isRunoff){if(secondRoundDiv.classList.contains('hidden')){renderSecondRoundInputs(c1.sort((a,b)=>b.totalAbsoluteVotes-a.totalAbsoluteVotes).slice(0,2).map(c=>c.candidate))}presidentialResultsStore.round2=calculatePresidential(2,pv).candidates}else{secondRoundDiv.classList.add('hidden')}
+  renderAllResults();updateMapColors();
+}
+function calculateParliamentary(pv){
+  provinceResultsStore=[];
+  provinces.forEach(prov=>{let cv={};parties.forEach(p=>{cv[p]=(normalizedNationalVotes[p]||0)*(prov.ratios[p]||0)});const sc=Object.values(cv).reduce((a,b)=>a+b,0);let lp={};parties.forEach(p=>{lp[p]=sc>0?(cv[p]/sc)*100:0});let av={};parties.forEach(p=>{av[p]=(lp[p]/100)*(pv[prov.id]||0)});let sa=Object.fromEntries(parties.map(p=>[p,0]));for(let i=0;i<prov.mpCount;i++){let mq=-1,wp=null;parties.forEach(p=>{if(p!=='OTH'&&(document.getElementById(`qualify_${p}`).checked||(normalizedNationalVotes[p]*100>=7))){const q=cv[p]/(sa[p]+1);if(q>mq){mq=q;wp=p}}});if(wp)sa[wp]++}provinceResultsStore.push({province:prov.id,localPercentages:lp,absoluteVotes:av,seatsAllocated:sa})});
+}
+function calculatePresidential(round,pv){
+  const tid=round===1?'presidentialTable':'secondRoundTable',sid=round===1?'sandigaRow':'srSandigaRow';const tbl=document.getElementById(tid);if(!tbl)return{candidates:[],isRunoff:false};
+  const rows=Array.from(tbl.tBodies[0].rows).filter(r=>r.id!==sid);
+  let cands=rows.map(r=>{const cs=r.cells,nm=cs[0].querySelector('input').value.trim()||'Aday',sp=Array.from(cs).slice(1).map(c=>parseFloat(c.querySelector('input').value)||0);return{candidate:nm,support:Object.fromEntries(parties.map((p,i)=>[p,sp[i]])),totalRatioVote:0,presVoteRatios:{},totalAbsoluteVotes:0,presAbsoluteVotes:{}}});
+  const sr=document.getElementById(sid),sv=Array.from(sr.cells).slice(1).map(c=>parseFloat(c.querySelector('input').value)||0),ss=Object.fromEntries(parties.map((p,i)=>[p,sv[i]]));
+  cands.forEach((c,i)=>{if(!candidateColorMapping[c.candidate])candidateColorMapping[c.candidate]=candidateColorsArray[i%candidateColorsArray.length]});
+  cands.forEach(c=>{c.totalRatioVote=0;parties.forEach(p=>{c.totalRatioVote+=(normalizedNationalVotes[p]||0)*(c.support[p]/100)*((100-ss[p])/100)})});
+  cands.forEach(c=>{c.presVoteRatios={};provinces.forEach(prov=>{let sc=0;parties.forEach(p=>{sc+=(normalizedNationalVotes[p]||0)*(prov.ratios[p]||0)*(c.support[p]/100)*((100-ss[p])/100)});c.presVoteRatios[prov.id]=sc})});
+  provinces.forEach(prov=>{const t=cands.reduce((s,c)=>s+(c.presVoteRatios[prov.id]||0),0);cands.forEach(c=>{c.presAbsoluteVotes[prov.id]=t>0?((c.presVoteRatios[prov.id]||0)/t)*(pv[prov.id]||0):0})});
+  cands.forEach(c=>{c.totalAbsoluteVotes=Object.values(c.presAbsoluteVotes).reduce((a,b)=>a+b,0)});
+  const ta=cands.reduce((s,c)=>s+c.totalAbsoluteVotes,0);
+  return{candidates:cands,isRunoff:round===1&&ta>0&&!cands.some(c=>(c.totalAbsoluteVotes/ta*100)>50)};
+}
+
+/* ── Render results ── */
+function renderAllResults(){
+  const ts=600,mp=(301/600)*100;
+  const tap=Object.fromEntries(parties.map(p=>[p,0]));provinceResultsStore.forEach(pr=>{Object.entries(pr.absoluteVotes).forEach(([p,v])=>{tap[p]+=v})});
+  const ta=Object.values(tap).reduce((a,b)=>a+b,0);
+  const os=Object.fromEntries(parties.map(p=>[p,0]));provinceResultsStore.forEach(pr=>{Object.entries(pr.seatsAllocated).forEach(([p,s])=>{os[p]+=s})});
+  const sorted=Object.keys(normalizedNationalVotes).map(p=>({p,pct:ta>0?(tap[p]/ta*100):0,s:os[p]})).sort((a,b)=>b.s-a.s||b.pct-a.pct).filter(d=>d.pct>0.1||d.s>0);
+
+  let h=`<div class="res-inner fade-in">`;
+  // Hemicycle header
+  h+=`<div style="padding:10px 14px;border-bottom:1px solid var(--line);flex-shrink:0"><div class="hbar" style="position:relative">`;
+  sorted.forEach(d=>{const w=(d.s/ts)*100;if(w>0)h+=`<div class="hseg" style="width:${w}%;background:${partyColors[d.p]}"></div>`});
+  h+=`<div class="majline" style="left:${mp}%"></div></div><div class="pills">`;
+  sorted.slice(0,6).forEach(d=>{if(d.s>0)h+=`<div class="pill"><div class="pill-dot" style="background:${partyColors[d.p]}"></div><span class="pill-name">${d.p}</span><span class="pill-val">${d.s}</span></div>`});
+  h+=`</div></div>`;
+  // Party rows — flex container, rows share space
+  h+=`<div class="res-rows">`;
+  sorted.forEach(d=>{
+    h+=`<div class="rrow"><div class="rbar" style="width:${d.pct}%;background:${partyColors[d.p]}"></div>
+      <div class="rinfo"><div class="rdot" style="background:${partyColors[d.p]}"></div>
+        <div><div class="rname">${d.p}</div><div class="rpct">%${d.pct.toFixed(1)}</div></div></div>
+      <div style="text-align:right;z-index:1;position:relative"><div class="rseats">${d.s}</div></div></div>`});
+  h+=`</div>`;
+  // Presidential — compact
+  const rps=(title,res)=>{const t=res.reduce((s,c)=>s+c.totalAbsoluteVotes,0);let s=`<div style="padding:8px 14px;border-top:1px solid var(--line);flex-shrink:0"><div class="slbl" style="margin-bottom:4px">${title}</div>`;
+    res.sort((a,b)=>b.totalAbsoluteVotes-a.totalAbsoluteVotes).forEach(c=>{const pct=t>0?(c.totalAbsoluteVotes/t*100):0,col=candidateColorMapping[c.candidate]||'#94a3b8';
+      s+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:800;color:var(--ink)">${c.candidate}</span>
+        <div style="display:flex;align-items:center;gap:8px"><div style="width:60px;height:5px;background:var(--line);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${col};border-radius:3px"></div></div>
+        <span style="font-family:var(--mono);font-size:14px;font-weight:900;color:${col};font-variant-numeric:tabular-nums;letter-spacing:-.02em;min-width:52px;text-align:right">${pct.toFixed(1)}%</span></div></div>`});return s+`</div>`};
+  if(presidentialResultsStore.round1.length>0)h+=rps("CB 1. TUR",presidentialResultsStore.round1);
+  if(presidentialResultsStore.round2.length>0)h+=rps("CB 2. TUR",presidentialResultsStore.round2);
+  h+=`</div>`;resultsDiv.innerHTML=h;
+}
+
+/* switchElectionMode defined above with toggleMode */
+function openCreatePartyModal(){let c=document.getElementById("baseShareContainer");c.innerHTML="";parties.forEach(p=>{if(p!=='OTH')c.innerHTML+=`<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,.02);border-radius:6px;border:1px solid var(--line)"><label style="font-size:10px;font-weight:800;color:${partyColors[p]};width:30px">${p}</label><input type="number" id="baseShare_${p}" value="0" step="any" style="width:44px;padding:3px;font-family:var(--mono);font-size:10px;font-weight:600;text-align:right;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--ink);outline:none"></div>`});document.getElementById("createPartyModal").classList.remove('hidden')}
+function submitNewParty(){const pn=document.getElementById("newPartyName").value.trim().toUpperCase();if(!pn||parties.includes(pn)){alert("Geçerli ve benzersiz bir ad girin.");return}const pc=document.getElementById("newPartyColor").value;parties.push(pn);partyColors[pn]=pc;provinces.forEach(prov=>{let nr=0;Object.keys(prov.ratios).forEach(ep=>{const si=document.getElementById(`baseShare_${ep}`);if(si)nr+=(parseFloat(si.value)||0)/100*(prov.ratios[ep]||0)});prov.ratios[pn]=nr>0?nr:0.5});renderParliamentaryInputs();const en=Array.from(document.querySelectorAll('#presidentialTable tbody tr:not(#sandigaRow) input[type="text"]')).map(i=>i.value);renderPresidentialInputs(en);document.getElementById("createPartyModal").classList.add('hidden')}
+
+/* ── Color ── */
+function hexToHSL(H){let r=0,g=0,b=0;if(H.length==4){r="0x"+H[1]+H[1];g="0x"+H[2]+H[2];b="0x"+H[3]+H[3]}else if(H.length==7){r="0x"+H[1]+H[2];g="0x"+H[3]+H[4];b="0x"+H[5]+H[6]}r/=255;g/=255;b/=255;let mn=Math.min(r,g,b),mx=Math.max(r,g,b),d=mx-mn,h=0,s=0,l=0;if(d==0)h=0;else if(mx==r)h=((g-b)/d)%6;else if(mx==g)h=(b-r)/d+2;else h=(r-g)/d+4;h=Math.round(h*60);if(h<0)h+=360;l=(mx+mn)/2;s=d==0?0:d/(1-Math.abs(2*l-1));return{h,s:+(s*100).toFixed(1),l:+(l*100).toFixed(1)}}
+function hslToHex({h,s,l}){s/=100;l/=100;let c=(1-Math.abs(2*l-1))*s,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2,r=0,g=0,b=0;if(0<=h&&h<60){r=c;g=x}else if(60<=h&&h<120){r=x;g=c}else if(120<=h&&h<180){g=c;b=x}else if(180<=h&&h<240){g=x;b=c}else if(240<=h&&h<300){r=x;b=c}else{r=c;b=x}r=Math.round((r+m)*255).toString(16);g=Math.round((g+m)*255).toString(16);b=Math.round((b+m)*255).toString(16);if(r.length==1)r="0"+r;if(g.length==1)g="0"+g;if(b.length==1)b="0"+b;return"#"+r+g+b}
+function adjustColor(bc,vs){if(!bc)return'#cbd5e1';let hsl=hexToHSL(bc);const f=Math.min(1,vs/65);hsl.l=85-(f*50);hsl.s=40+(f*60);return hslToHex(hsl)}
+</script>
+<script>
+/* ═══ Enhancement Layer ═══ */
+(()=>{
+const SK="secim_sim_state_v3",ST="secim_sim_theme",SA="secim_sim_autorun";
+const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
+let autoRun=false,pinnedProvinceId=null,lastHoverProvinceId=null,saveTimer=null,runTimer=null;
+const debounce=(fn,w=250)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),w)}};
+const showToast=(msg,kind="info")=>{const h=$("#toastHost");if(!h)return;const el=document.createElement("div");const bg=kind==="ok"?"#059669":kind==="warn"?"#d97706":kind==="bad"?"#dc2626":"var(--blue)";el.className="toast";el.style.cssText=`padding:10px 18px;border-radius:12px;font-size:12px;font-weight:700;color:white;background:${bg};box-shadow:0 4px 14px rgba(0,0,0,.15),0 0 0 1px rgba(255,255,255,.1) inset;transition:all .3s ease`;el.textContent=msg;h.appendChild(el);setTimeout(()=>{el.style.opacity="0";el.style.transform="translateX(10px)"},2400);setTimeout(()=>el.remove(),2700)};
+const setSaveBadge=t=>{const b=$("#saveBadge");if(b)b.textContent=t};
+function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
+function getTheme(){return localStorage.getItem(ST)||"aurora"}
+function applyTheme(t){const v=t==="midnight"?"dark":"";if(v)document.documentElement.setAttribute("data-theme","dark");else document.documentElement.removeAttribute("data-theme");const l=$("#themeLabel");if(l)l.textContent=v?'☾ MIDNIGHT':'☀ AURORA';localStorage.setItem(ST,v?"midnight":"aurora");if(typeof updateMapColors==="function")updateMapColors()}
+function setAutoRun(e){autoRun=!!e;localStorage.setItem(SA,autoRun?"1":"0");const b=$("#btnAutoRun");if(b)b.innerHTML=`Oto: <span style="font-family:var(--mono)">${autoRun?"ON":"OFF"}</span>`}
+function snapshotState(full=true){
+  const nat={},qual={};if(typeof parties!=="undefined")parties.forEach(p=>{const i=document.getElementById(`input_${p}`);nat[p]=i?(parseFloat(i.value)||0):0;const q=document.getElementById(`qualify_${p}`);qual[p]=q?!!q.checked:false});
+  const rct=tid=>{const t=document.getElementById(tid);if(!t?.tBodies?.[0])return null;return Array.from(t.tBodies[0].rows).filter(r=>r.id!=="sandigaRow").map(r=>({name:r.querySelector('th input[type="text"]')?.value?.trim()||"",votes:Array.from(r.querySelectorAll('td input[type="number"]')).map(i=>parseFloat(i.value)||0)}))};
+  const s={v:3,ts:Date.now(),theme:document.documentElement.getAttribute("data-theme")==="dark"?"midnight":"aurora",autoRun,electionMode:typeof electionMode!=="undefined"?electionMode:"parliamentary",parties:typeof parties!=="undefined"?[...parties]:[],partyColors:typeof partyColors!=="undefined"?{...partyColors}:{},national:nat,qualify:qual,pres1:rct("presidentialTable"),pres2:rct("secondRoundTable"),runoffVisible:!!document.getElementById("secondRoundDiv")&&!document.getElementById("secondRoundDiv").classList.contains("hidden"),pinnedProvinceId};
+  if(full&&typeof provinces!=="undefined")s.provinceRatios=provinces.map(p=>({id:p.id,defaultVotes:p.defaultVotes,ratios:p.ratios}));return s}
+function saveState(){try{setSaveBadge("SAVING…");localStorage.setItem(SK,JSON.stringify(snapshotState(true)));setSaveBadge("SAVED ✓")}catch(e){console.warn(e);setSaveBadge("ERR")}}
+function scheduleSave(){clearTimeout(saveTimer);setSaveBadge("…");saveTimer=setTimeout(saveState,450)}
+function scheduleRun(){if(!autoRun)return;clearTimeout(runTimer);runTimer=setTimeout(()=>{try{if(typeof calculateWrapper==="function")calculateWrapper()}catch{}},550)}
+function applyState(s){
+  if(!s||s.v!==3)return false;try{
+    applyTheme(s.theme||"aurora");setAutoRun(!!s.autoRun);
+    if(Array.isArray(s.parties)&&s.parties.length&&typeof parties!=="undefined"){
+      parties=[...s.parties];if(s.partyColors)partyColors={...s.partyColors};
+      if(Array.isArray(s.provinceRatios))s.provinceRatios.forEach(sp=>{const p=provinces.find(pp=>pp.id===sp.id);if(p&&sp.ratios)p.ratios=sp.ratios;if(p&&typeof sp.defaultVotes==="number")p.defaultVotes=sp.defaultVotes});
+      if(typeof renderParliamentaryInputs==="function")renderParliamentaryInputs();
+      const nms=(s.pres1||[]).map(r=>r.name).filter(Boolean);if(typeof renderPresidentialInputs==="function")renderPresidentialInputs(nms.length?nms:undefined);
+      parties.forEach(p=>{const i=document.getElementById(`input_${p}`);if(i&&s.national?.[p]!=null)i.value=s.national[p];const q=document.getElementById(`qualify_${p}`),b=document.getElementById(`qualify_${p}_btn`);if(q&&s.qualify?.[p]!=null){q.checked=!!s.qualify[p];if(b)b.classList.toggle('on',q.checked)}});
+      const fct=(tid,data)=>{const t=document.getElementById(tid);if(!t?.tBodies?.[0]||!Array.isArray(data))return;const rows=Array.from(t.tBodies[0].rows).filter(r=>r.id!=="sandigaRow");data.forEach((d,i)=>{if(!rows[i])return;const ni=rows[i].querySelector('th input[type="text"]');if(ni&&d.name!=null)ni.value=d.name;Array.from(rows[i].querySelectorAll('td input[type="number"]')).forEach((inp,j)=>{if(d.votes?.[j]!=null)inp.value=d.votes[j]})})};
+      fct("presidentialTable",s.pres1);const sd=document.getElementById("secondRoundDiv");
+      if(sd){if(s.runoffVisible&&Array.isArray(s.pres2)&&s.pres2.length){if(typeof renderSecondRoundInputs==="function")renderSecondRoundInputs(s.pres2.map(r=>r.name));sd.classList.remove("hidden");fct("secondRoundTable",s.pres2)}else sd.classList.add("hidden")}
+      pinnedProvinceId=s.pinnedProvinceId||null;if(typeof switchElectionMode==="function")switchElectionMode(s.electionMode||"parliamentary");
+      if(Object.values(s.national||{}).some(v=>(parseFloat(v)||0)>0)&&typeof calculateWrapper==="function")calculateWrapper()}
+    showToast("Durum yüklendi.","ok");return true}catch(e){console.warn(e);showToast("Yüklenemedi.","bad");return false}}
+function loadState(){const r=localStorage.getItem(SK);if(!r)return;try{applyState(JSON.parse(r))}catch{}}
+function updateProvinceInspector(prov,reason="hover"){
+  if(!prov)return;if(pinnedProvinceId&&reason==="hover"&&prov.id!==pinnedProvinceId)return;
+  const t=$("#provinceInspectorTitle"),b=$("#provinceInspectorBody"),h=$("#provinceInspectorHint");
+  const def=$("#inspectorDefault"),act=$("#inspectorActive");
+  if(!t||!b||!def||!act)return;
+  def.style.display='none';act.style.display='flex';
+  t.textContent=prov.displayName||prov.id;if(h)h.textContent=pinnedProvinceId===prov.id?`SABİT · MV: ${prov.mpCount}`:`MV: ${prov.mpCount}`;
+  const pr=typeof provinceResultsStore!=="undefined"?provinceResultsStore.find(r=>r.province===prov.id):null;
+  if(!pr){b.innerHTML=`<span style="font-size:11px;color:var(--muted)">Hesapla butonuna basın</span>`;return}
+  b.innerHTML=Object.entries(pr.localPercentages||{}).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([p,pct])=>{const s=(pr.seatsAllocated||{})[p]||0,c=partyColors?.[p]||"#94a3b8";return`<div class="pinsp-chip"><div class="pcd" style="background:${c}"></div><span class="pcn">${p}</span><span class="pcv">${pct.toFixed(1)}%</span>${s?`<span class="pcs">${s}</span>`:''}</div>`}).join('')}
+function clearProvinceInspector(){
+  const def=$("#inspectorDefault"),act=$("#inspectorActive");
+  if(def)def.style.display='flex';if(act)act.style.display='none';
+}
+function setPinnedProvince(id){pinnedProvinceId=id;scheduleSave();$$('.map-panel path').forEach(p=>{p.style.strokeWidth=".7";p.style.stroke="var(--map-stroke)"});if(id){$$('.map-panel path').filter(el=>el.id===id).forEach(el=>{el.style.stroke="var(--blue)";el.style.strokeWidth="2.5"})}}
+function focusProvince(id){const els=$$('.map-panel path').filter(el=>el.id===id);els.forEach(el=>{el.style.filter="drop-shadow(0 0 10px rgba(37,99,235,.4))";setTimeout(()=>{el.style.filter=""},900)})}
+function wireMapA11yAndClicks(){
+  // Wire toggle/inspector via global functions called from rebuildMaps
+  window.togglePin=function(prov){
+    if(!prov)return;const n=pinnedProvinceId===prov.id?null:prov.id;setPinnedProvince(n);updateProvinceInspector(prov,"pin");showToast(n?`${prov.displayName} sabitlendi.`:"Bırakıldı.",n?"ok":"info");
+  };
+  window.updatePI=function(prov){if(prov){lastHoverProvinceId=prov.id;updateProvinceInspector(prov,"hover")}};
+}function wireProvinceSearch(){const inp=$("#provinceSearch"),clr=$("#btnClearSearch");if(!inp)return;inp.addEventListener("input",debounce(()=>{const q=inp.value.trim().toLowerCase();if(!q)return;const p=provinces?.find(x=>(x.displayName||"").toLowerCase().includes(q));if(p){focusProvince(p.id);updateProvinceInspector(p,"hover")}},180));if(clr)clr.addEventListener("click",()=>{inp.value="";inp.focus()})}
+function wireIO(){
+  const modal=$("#ioModal"),btn=$("#btnIO"),close=$("#btnCloseIO"),txt=$("#ioText"),bc=$("#btnCopyJSON"),ba=$("#btnApplyJSON"),bd=$("#btnDownloadJSON"),bs=$("#btnShareLink"),fi=$("#fileImport");
+  const open=()=>{if(!modal||!txt)return;txt.value=JSON.stringify(snapshotState(true),null,2);modal.classList.remove("hidden");txt.focus()};
+  const shut=()=>modal?.classList.add("hidden");
+  btn?.addEventListener("click",open);close?.addEventListener("click",shut);
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"){[modal,document.getElementById('presModal'),document.getElementById('createPartyModal')].forEach(m=>{if(m&&!m.classList.contains('hidden'))m.classList.add('hidden')})}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();open()}});
+  bc?.addEventListener("click",async()=>{try{await navigator.clipboard.writeText(txt.value||"");showToast("Kopyalandı.","ok")}catch{showToast("Başarısız.","warn")}});
+  ba?.addEventListener("click",()=>{try{if(applyState(JSON.parse(txt.value))){saveState();shut()}}catch{showToast("Geçersiz JSON.","bad")}});
+  bd?.addEventListener("click",()=>{const b=new Blob([txt.value||""],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`secim-${Date.now()}.json`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);showToast("İndirildi.","ok")});
+  bs?.addEventListener("click",async()=>{const m=snapshotState(false);const pl=btoa(unescape(encodeURIComponent(JSON.stringify({v:m.v,electionMode:m.electionMode,parties:m.parties,partyColors:m.partyColors,national:m.national,qualify:m.qualify,pres1:m.pres1,pres2:m.pres2,runoffVisible:m.runoffVisible,theme:m.theme}))));try{await navigator.clipboard.writeText(`${location.origin}${location.pathname}#s=${pl}`);showToast("Link kopyalandı.","ok")}catch{showToast("Başarısız.","warn")}});
+  fi?.addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;txt.value=await f.text();showToast("Yüklendi. Uygula ile aktarın.","ok")})}
+function wireReset(){$("#btnReset")?.addEventListener("click",()=>{localStorage.removeItem(SK);showToast("Sıfırlandı.","warn");setTimeout(()=>location.reload(),350)})}
+function wireTheme(){$("#btnTheme")?.addEventListener("click",()=>{const n=getTheme()==="midnight"?"aurora":"midnight";applyTheme(n);scheduleSave();showToast(`Tema: ${n.toUpperCase()}`,"ok")})}
+function wirePinButtons(){
+  $("#btnPinProvince")?.addEventListener("click",()=>{const id=pinnedProvinceId||lastHoverProvinceId;if(!id)return showToast("Önce il seçin.","warn");setPinnedProvince(id);const p=provinces?.find(x=>x.id===id);if(p)updateProvinceInspector(p,"pin")});
+  $("#btnUnpinProvince")?.addEventListener("click",()=>{setPinnedProvince(null);clearProvinceInspector();showToast("Bırakıldı.","info")})}
+function wireAutosaveOnInput(){
+  const handler=e=>{const t=e.target;if(!t)return;if((t.id&&(t.id.startsWith("input_")||t.id.startsWith("qualify_")))||t.closest?.("#presidentialTable")||t.closest?.("#secondRoundTable")||t.closest?.("#createPartyModal")){scheduleSave();scheduleRun()}};
+  document.addEventListener("input",handler,{passive:true});document.addEventListener("change",handler,{passive:true});
+  if(typeof switchElectionMode==="function"&&!switchElectionMode.__enhanced){const _s=switchElectionMode;switchElectionMode=m=>{_s(m);scheduleSave()};switchElectionMode.__enhanced=true}
+  if(typeof submitNewParty==="function"&&!submitNewParty.__enhanced){const _p=submitNewParty;submitNewParty=()=>{_p();scheduleSave();scheduleRun()};submitNewParty.__enhanced=true}}
+function parseHashState(){const h=location.hash||"",m=h.match(/#s=([^&]+)/);if(!m)return null;try{return JSON.parse(decodeURIComponent(escape(atob(m[1]))))}catch{return null}}
+document.addEventListener("DOMContentLoaded",()=>{
+  applyTheme(getTheme());setAutoRun(localStorage.getItem(SA)==="1");
+  wireTheme();wireIO();wireReset();wirePinButtons();wireProvinceSearch();wireAutosaveOnInput();wireMapA11yAndClicks();
+  const fh=parseHashState();if(fh){applyState(Object.assign({v:3,autoRun,pinnedProvinceId:null},fh));showToast("Link uygulandı.","ok")}else loadState();scheduleSave()})
+})();
+</script>
+</body></html>
